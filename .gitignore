@@ -1,0 +1,16 @@
+.DS_Store
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+
+build/
+dist/
+output/
+tmp/
+examples/**/build/
+
+vscode-extension/node_modules/
+vscode-extension/*.vsix

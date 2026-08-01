@@ -1,0 +1,91 @@
+from __future__ import annotations
+
+from datetime import date
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class LenientModel(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+class Address(LenientModel):
+    street: str
+    postal_code: str
+    city: str
+    country: str = Field(default="DE", pattern=r"^[A-Z]{2}$")
+    extra: list[str] = Field(default_factory=list)
+
+
+class Party(LenientModel):
+    name: str | None = None
+    organization: str | None = None
+    department: str | None = None
+    address: Address
+    phone: str | None = None
+    email: str | None = None
+    website: str | None = None
+
+    @field_validator("name", "organization", "department", mode="before")
+    @classmethod
+    def empty_string_is_missing(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @property
+    def display_name(self) -> str:
+        if self.name:
+            return self.name
+        if self.organization:
+            return self.organization
+        raise ValueError("A party needs either name or organization")
+
+
+class Layout(LenientModel):
+    standard: Literal["din-5008"] = "din-5008"
+    form: Literal["A", "B"] = "B"
+    window_envelope: bool = True
+    fold_marks: bool = True
+    hole_mark: bool = True
+
+
+class Delivery(LenientModel):
+    method: Literal["print", "email", "both"] = "both"
+
+
+class Letter(LenientModel):
+    format: Literal["dinbrief/v1"] = "dinbrief/v1"
+    language: str = Field(default="de-DE", pattern=r"^[a-z]{2}(?:-[A-Z]{2})?$")
+    sender: str | Party
+    recipient: Party
+    date: date
+    location: str | None = None
+    subject: str = Field(min_length=1)
+    salutation: str = Field(min_length=1)
+    closing: str = Field(min_length=1)
+    references: dict[str, str] = Field(default_factory=dict)
+    delivery: Delivery = Field(default_factory=Delivery)
+    layout: Layout = Field(default_factory=Layout)
+    tags: list[str] = Field(default_factory=list)
+    attachments: list[str] = Field(default_factory=list)
+
+    @field_validator("tags")
+    @classmethod
+    def normalize_tags(cls, tags: list[str]) -> list[str]:
+        return list(dict.fromkeys(tag.strip().lower() for tag in tags if tag.strip()))
+
+    @field_validator("sender", "recipient")
+    @classmethod
+    def party_needs_identity(cls, value: str | Party) -> str | Party:
+        if isinstance(value, Party) and not (value.name or value.organization):
+            raise ValueError("Provide at least name or organization")
+        return value
+
+
+class ParsedLetter(BaseModel):
+    source: str
+    metadata: Letter
+    body: str
+    raw_metadata: dict[str, Any]

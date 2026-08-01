@@ -1,0 +1,36 @@
+{
+  "name": "dinbrief-vscode",
+  "displayName": "dinbrief",
+  "description": "Author and preview DIN 5008 *.letter.md files",
+  "version": "0.1.0",
+  "publisher": "dinbrief",
+  "engines": {"vscode": "^1.95.0"},
+  "categories": ["Other", "Linters"],
+  "activationEvents": ["workspaceContains:**/*.letter.md", "onLanguage:markdown"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {"command": "dinbrief.check", "title": "DIN-Brief: Prüfen"},
+      {"command": "dinbrief.render", "title": "DIN-Brief: PDF erstellen"},
+      {"command": "dinbrief.open", "title": "DIN-Brief: PDF erstellen und öffnen"},
+      {"command": "dinbrief.preview", "title": "DIN-Brief: Vorschau öffnen"}
+    ],
+    "keybindings": [
+      {"command": "dinbrief.open", "key": "ctrl+shift+b", "mac": "cmd+shift+b", "when": "resourceFilename =~ /\\.letter\\.md$/"}
+    ],
+    "configuration": {
+      "title": "dinbrief",
+      "properties": {
+        "dinbrief.executable": {"type": "string", "default": "dinbrief"},
+        "dinbrief.exactDiagnostics": {"type": "boolean", "default": true},
+        "dinbrief.renderDebounceMs": {"type": "number", "default": 350, "minimum": 150}
+      }
+    }
+  },
+  "scripts": {"lint": "eslint extension.js"},
+  "devDependencies": {
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.3.2",
+    "eslint": "^9.18.0"
+  }
+}
