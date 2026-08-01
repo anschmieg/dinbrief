@@ -9,6 +9,7 @@ frontmatter between the `---` lines, and write the letter body as normal Markdow
 
 ```bash
 uv tool install .
+dinbrief --version
 dinbrief check examples/de/example.letter.md
 dinbrief render examples/de/example.letter.md
 ```
@@ -25,8 +26,9 @@ dinbrief search "Steuerbescheit"
 
 Search is disabled by default even when the extra is installed. `dinbrief setup search` reports
 both installation and activation state; `--disable` turns it off without deleting the rebuildable
-cache. Reinstalling plain `dinbrief` omits the optional engine again. Letter sources remain the
-sole source of truth.
+cache. `uv tool install` is already global; it has no `--global` flag. Reinstalling plain
+`dinbrief` omits the optional engine again. Letter sources remain the sole source of truth. Search
+automatically refreshes its cache when a letter is created, edited, moved, or deleted.
 
 Without a configured archive root, the PDF is written directly beside the source. For sources
 inside a configured `roots` entry, output is collected below `<root>/build/` while preserving
@@ -48,6 +50,7 @@ field overrides the sender city in the localized date line, for example
 - `dinbrief explain correspondence/example.letter.md`
 - `dinbrief email correspondence/example.letter.md`
 - `dinbrief list --tag contract`
+- `dinbrief list --sort date-desc`
 - `dinbrief search termination`
 - `dinbrief search --refresh termination`
 - `dinbrief search termination --tag contract --sort date-desc`
@@ -68,6 +71,16 @@ inline prompts with autocomplete and selectable filters. Scripts can use the equ
 `--tag`, `--language`, `--sender`, `--recipient`, `--delivery`, `--date-from`, `--date-to`, and
 `--folder`. Sort with `--sort relevance|date-desc|date-asc|recipient|subject|path`; control typo
 tolerance with `--fuzziness 0|1|2`.
+
+`setup vscode` merges the dinbrief tasks, settings, and extension recommendation with existing
+JSON workspace files. It refuses malformed or JSONC files instead of overwriting them; convert
+those files to standard JSON or add the documented tasks manually. The update is transactional,
+so a validation error leaves every existing workspace file unchanged.
+
+The source body supports CommonMark paragraphs, emphasis, strong text, links, inline and block
+code, headings, block quotes, horizontal rules, and nested ordered or unordered lists. Unknown
+frontmatter fields are errors rather than being silently ignored, which catches misspellings in
+layout and address fields early.
 
 ## Configuration
 

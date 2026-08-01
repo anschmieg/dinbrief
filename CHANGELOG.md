@@ -2,6 +2,29 @@
 
 All notable changes to dinbrief are recorded here.
 
+## 0.5.3 — 2026-08-01
+
+- Keep search indexes automatically synchronized with added, changed, moved, and deleted letters.
+- Merge VS Code workspace files transactionally instead of overwriting existing configuration.
+- Reject unknown frontmatter fields so misspellings cannot silently change a letter.
+- Isolate editor previews per document and ignore stale language-service responses.
+- Add request timeouts, process recovery, cross-platform extension tasks, and JavaScript tests.
+- Preserve ordered lists, headings, quotes, code blocks, links, and additional CommonMark constructs.
+- Correct international country handling and support state/region fields in postal addresses.
+- Render immediately when `watch` starts and expose the installed version via `--version`.
+- Expand CI coverage to Python 3.14 and verify the canonical schema before packaging the extension.
+
+## 0.5.2 — 2026-08-01
+
+- Expand `~` in interactive file paths before validation.
+- Defer the native file-watcher import until the `watch` command is used.
+
+## 0.5.1 — 2026-08-01
+
+- Repair interactive path prompts and make Exit and Cancel terminate reliably.
+- Guide disabled optional search through setup instead of an error loop.
+- Add real-terminal regression coverage for common shell actions.
+
 ## 0.5.0 — 2026-08-01
 
 - Add styled inline interaction with Questionary and prompt-toolkit.
