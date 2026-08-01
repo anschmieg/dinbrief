@@ -8,14 +8,17 @@ let buffer = "";
 let sequence = 0;
 let previewPanel;
 let lastPreview;
+let output;
 const pending = new Map();
 const timers = new Map();
+const latest = new Map();
 
 function isLetter(document) {
   return document.uri.scheme === "file" && document.fileName.endsWith(".letter.md");
 }
 
 function startService() {
+  if (service && !service.killed) return;
   const executable = vscode.workspace.getConfiguration("dinbrief").get("executable", "dinbrief");
   service = spawn(executable, ["serve", "--stdio"]);
   service.stdout.setEncoding("utf8");
@@ -26,25 +29,76 @@ function startService() {
       const line = buffer.slice(0, end);
       buffer = buffer.slice(end + 1);
       if (!line) continue;
-      const response = JSON.parse(line);
+      let response;
+      try {
+        response = JSON.parse(line);
+      } catch (error) {
+        output.appendLine(`Invalid service response: ${error.message}: ${line}`);
+        continue;
+      }
       const callback = pending.get(response.id);
       if (callback) {
         pending.delete(response.id);
-        callback(response);
+        clearTimeout(callback.timeout);
+        callback.resolve(response);
       }
     }
   });
   service.stderr.setEncoding("utf8");
-  service.stderr.on("data", message => console.error(`dinbrief: ${message}`));
-  service.on("error", error => vscode.window.showErrorMessage(`dinbrief service: ${error.message}`));
+  service.stderr.on("data", message => output.append(`dinbrief: ${message}`));
+  service.on("error", error => output.appendLine(`dinbrief service: ${error.message}`));
+  service.on("close", (code, signal) => {
+    for (const [id, callback] of pending.entries()) {
+      clearTimeout(callback.timeout);
+      const error = new Error(`dinbrief service stopped (${signal || code})`);
+      error.requestId = id;
+      callback.reject(error);
+    }
+    pending.clear();
+    service = undefined;
+  });
 }
 
 function request(document, render = false) {
   if (!service || service.killed) startService();
   const id = ++sequence;
+  const uri = document.uri.toString();
+  latest.set(uri, id);
   const payload = { id, uri: document.uri.toString(), text: document.getText(), render };
-  service.stdin.write(JSON.stringify(payload) + "\n");
-  return new Promise(resolve => pending.set(id, resolve));
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pending.delete(id);
+      const error = new Error("dinbrief service request timed out");
+      error.requestId = id;
+      reject(error);
+    }, 15000);
+    pending.set(id, { resolve, reject, timeout });
+    service.stdin.write(JSON.stringify(payload) + "\n", error => {
+      if (!error) return;
+      clearTimeout(timeout);
+      pending.delete(id);
+      error.requestId = id;
+      reject(error);
+    });
+  });
+}
+
+function isCurrent(document, response) {
+  return responseIsCurrent(latest.get(document.uri.toString()), response.id);
+}
+
+function responseIsCurrent(latestId, responseId) {
+  return latestId === responseId;
+}
+
+function serviceDiagnostic(error) {
+  return [{ severity: "error", code: "service", message: error.message }];
+}
+
+function publishServiceError(collection, status, document, error) {
+  if (latest.get(document.uri.toString()) === error.requestId) {
+    publish(collection, status, document, serviceDiagnostic(error));
+  }
 }
 
 function lineForField(document, field) {
@@ -78,28 +132,44 @@ function publish(collection, status, document, items) {
 
 function schedule(collection, status, document) {
   if (!isLetter(document)) return;
-  clearTimeout(timers.get(document.uri.toString()));
-  request(document, false).then(response => publish(collection, status, document, response.diagnostics));
+  const uri = document.uri.toString();
+  clearTimeout(timers.get(uri));
+  request(document, false)
+    .then(response => {
+      if (isCurrent(document, response)) publish(collection, status, document, response.diagnostics);
+    })
+    .catch(error => publishServiceError(collection, status, document, error));
   if (!vscode.workspace.getConfiguration("dinbrief").get("exactDiagnostics", true)) return;
   const delay = vscode.workspace.getConfiguration("dinbrief").get("renderDebounceMs", 350);
-  timers.set(document.uri.toString(), setTimeout(() => {
-    request(document, true).then(response => {
-      publish(collection, status, document, response.diagnostics);
-      if (response.preview) {
-        lastPreview = response.preview;
-        if (previewPanel) updatePreview(previewPanel, response.preview);
-      }
-    });
+  timers.set(uri, setTimeout(() => {
+    request(document, true)
+      .then(response => {
+        if (!isCurrent(document, response)) return;
+        publish(collection, status, document, response.diagnostics);
+        if (response.preview) {
+          lastPreview = response.preview;
+          if (previewPanel) updatePreview(previewPanel, response.preview);
+        }
+      })
+      .catch(error => publishServiceError(collection, status, document, error));
   }, delay));
 }
 
-function runTerminal(command) {
+function runTask(command) {
   const editor = vscode.window.activeTextEditor;
   if (!editor || !isLetter(editor.document)) return;
-  const terminal = vscode.window.createTerminal("dinbrief");
-  terminal.show();
-  const file = editor.document.fileName.replace(/'/g, "'\\''");
-  terminal.sendText(`dinbrief ${command} '${file}'`);
+  const executable = vscode.workspace.getConfiguration("dinbrief").get("executable", "dinbrief");
+  const execution = new vscode.ProcessExecution(executable, [command, editor.document.fileName]);
+  const definition = { type: "dinbrief", command };
+  const scope = vscode.workspace.getWorkspaceFolder(editor.document.uri) || vscode.TaskScope.Global;
+  const task = new vscode.Task(
+    definition,
+    scope,
+    `DIN-Brief: ${command}`,
+    "dinbrief",
+    execution
+  );
+  vscode.tasks.executeTask(task);
 }
 
 function inFrontmatter(document, position) {
@@ -172,8 +242,13 @@ function updatePreview(panel, previewPath) {
 async function showPreview(context) {
   const editor = vscode.window.activeTextEditor;
   if (editor && isLetter(editor.document)) {
-    const response = await request(editor.document, true);
-    if (response.preview) lastPreview = response.preview;
+    try {
+      const response = await request(editor.document, true);
+      if (isCurrent(editor.document, response) && response.preview) lastPreview = response.preview;
+    } catch (error) {
+      vscode.window.showErrorMessage(`dinbrief preview: ${error.message}`);
+      return;
+    }
   }
   if (!lastPreview) return;
   if (!previewPanel) {
@@ -200,13 +275,21 @@ function activate(context) {
   const selector = { language: "markdown", pattern: "**/*.letter.md" };
   const diagnostics = vscode.languages.createDiagnosticCollection("dinbrief");
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
+  output = vscode.window.createOutputChannel("dinbrief");
   status.command = "dinbrief.preview";
-  startService();
   context.subscriptions.push(
     diagnostics,
     status,
+    output,
     vscode.workspace.onDidOpenTextDocument(document => schedule(diagnostics, status, document)),
     vscode.workspace.onDidChangeTextDocument(event => schedule(diagnostics, status, event.document)),
+    vscode.workspace.onDidCloseTextDocument(document => {
+      const uri = document.uri.toString();
+      clearTimeout(timers.get(uri));
+      timers.delete(uri);
+      latest.delete(uri);
+      diagnostics.delete(document.uri);
+    }),
     vscode.languages.registerCompletionItemProvider(selector, { provideCompletionItems: completionItems }, ":", " "),
     vscode.languages.registerHoverProvider(selector, {
       provideHover(document, position) {
@@ -219,9 +302,9 @@ function activate(context) {
       }
     }),
     vscode.languages.registerCodeActionsProvider(selector, { provideCodeActions: missingFieldAction }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
-    vscode.commands.registerCommand("dinbrief.check", () => runTerminal("check")),
-    vscode.commands.registerCommand("dinbrief.render", () => runTerminal("render")),
-    vscode.commands.registerCommand("dinbrief.open", () => runTerminal("open")),
+    vscode.commands.registerCommand("dinbrief.check", () => runTask("check")),
+    vscode.commands.registerCommand("dinbrief.render", () => runTask("render")),
+    vscode.commands.registerCommand("dinbrief.open", () => runTask("open")),
     vscode.commands.registerCommand("dinbrief.preview", () => showPreview(context))
   );
   vscode.workspace.textDocuments.forEach(document => schedule(diagnostics, status, document));
@@ -231,4 +314,8 @@ function deactivate() {
   if (service) service.kill();
 }
 
-module.exports = { activate, deactivate };
+module.exports = {
+  activate,
+  deactivate,
+  _test: { completionItems, inFrontmatter, responseIsCurrent, yamlPath }
+};

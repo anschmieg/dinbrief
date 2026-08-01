@@ -2,7 +2,7 @@
   "name": "dinbrief-vscode",
   "displayName": "dinbrief",
   "description": "Author and preview DIN 5008 *.letter.md files",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisher": "dinbrief",
   "engines": {
     "vscode": "^1.95.0"
@@ -63,7 +63,10 @@
     }
   },
   "scripts": {
-    "lint": "eslint extension.js"
+    "lint": "eslint extension.js test",
+    "test": "node --require ./test/register.js --test test/*.test.js",
+    "sync-schema": "node scripts/sync-schema.js",
+    "vscode:prepublish": "node scripts/sync-schema.js --check && npm run lint && npm test"
   },
   "devDependencies": {
     "@types/vscode": "^1.95.0",
