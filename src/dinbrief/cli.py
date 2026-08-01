@@ -20,7 +20,8 @@ from watchfiles import watch
 
 from .config import load_config
 from .diagnostics import Diagnostic, heuristic_diagnostics
-from .model import Letter
+from .index import database_path, query_index, rebuild_index
+from .model import Letter, Party
 from .parser import LetterParseError, parse_file, parse_text
 from .render import render_pdf, render_preview
 
@@ -167,8 +168,21 @@ def _letter_records() -> list[tuple[Path, Any]]:
     return records
 
 
+def _sender_name(sender: str | Party) -> str:
+    return sender.display_name if isinstance(sender, Party) else sender
+
+
 @app.command("list")
-def list_letters(tag: str | None = None, language: str | None = None) -> None:
+def list_letters(
+    tag: str | None = None,
+    language: str | None = None,
+    sender: str | None = None,
+    recipient: str | None = None,
+    delivery: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    folder: str | None = None,
+) -> None:
     """List letters in configured roots."""
     table = Table("Date", "Recipient", "Subject", "Tags", "Path")
     for path, letter in _letter_records():
@@ -176,6 +190,18 @@ def list_letters(tag: str | None = None, language: str | None = None) -> None:
         if tag and tag.lower() not in meta.tags:
             continue
         if language and meta.language != language:
+            continue
+        if sender and sender.casefold() not in _sender_name(meta.sender).casefold():
+            continue
+        if recipient and recipient.casefold() not in meta.recipient.display_name.casefold():
+            continue
+        if delivery and meta.delivery.method != delivery:
+            continue
+        if date_from and str(meta.date) < date_from:
+            continue
+        if date_to and str(meta.date) > date_to:
+            continue
+        if folder and folder.casefold() not in str(path.parent).casefold():
             continue
         table.add_row(
             str(meta.date),
@@ -188,8 +214,15 @@ def list_letters(tag: str | None = None, language: str | None = None) -> None:
 
 
 @app.command("search")
-def search(query: str) -> None:
+def search(query: str, refresh: bool = False) -> None:
     """Search metadata and body text across configured roots."""
+    if refresh or not database_path().exists():
+        rebuild_index(_roots())
+    indexed = query_index(query)
+    if indexed:
+        for item in indexed:
+            console.print(str(item.path))
+        return
     needle = query.casefold()
     for path, letter in _letter_records():
         haystack = " ".join(
@@ -202,6 +235,15 @@ def search(query: str) -> None:
         ).casefold()
         if needle in haystack:
             console.print(str(path))
+
+
+@app.command("index")
+def index_letters() -> None:
+    """Rebuild the optional search index from configured roots."""
+    count, errors = rebuild_index(_roots())
+    console.print(f"Indexed {count} letters in {database_path()}")
+    for path, message in errors:
+        console.print(f"{path}:1:1: warning: {message} [index]")
 
 
 @app.command("new")

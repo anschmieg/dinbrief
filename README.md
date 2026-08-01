@@ -34,7 +34,13 @@ field overrides the sender city in the localized date line, for example
 - `dinbrief email correspondence/example.letter.md`
 - `dinbrief list --tag contract`
 - `dinbrief search termination`
+- `dinbrief search --refresh termination`
+- `dinbrief index`
 - `dinbrief setup vscode .`
+
+`list` can additionally filter by language, sender, recipient, delivery method, folder and an
+ISO date range. `search` uses a rebuildable SQLite index in the user cache; source files remain
+the sole source of truth and are never moved, copied or linked.
 
 ## Configuration
 
