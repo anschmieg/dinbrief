@@ -406,6 +406,8 @@ def setup_search(enable: bool = False, disable: bool = False) -> None:
         state = "enabled" if search_enabled() else "disabled"
         installed = "installed" if search_available() else "not installed"
         console.print(f"Search is {state}; optional package is {installed}.")
+        if not search_available():
+            console.print("Install it with: uv tool install 'dinbrief[search]'", markup=False)
         if sys.stdin.isatty() and search_available():
             from .interactive import ask_search_activation
 
@@ -431,9 +433,16 @@ def interactive_shell() -> None:
         raise typer.BadParameter("The interactive shell requires a terminal")
     from .interactive import ask_action, ask_letter_path, ask_new_letter
 
-    while (action := ask_action()) is not None:
+    while True:
+        action = ask_action()
+        if action in {None, "exit"}:
+            return
         try:
             if action == "search":
+                if not search_enabled():
+                    setup_search(False, False)
+                    if not search_enabled():
+                        continue
                 search(query=None, interactive=True)
             elif action in {"check", "render", "open"}:
                 selected = ask_letter_path()

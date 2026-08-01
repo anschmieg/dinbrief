@@ -42,7 +42,7 @@ def ask_action() -> str | None:
             Choice("Create and open PDF", "open"),
             Choice("Create a new letter", "new"),
             Choice("Configure optional search", "setup-search"),
-            Choice("Exit", None),
+            Choice("Exit", "exit"),
         ],
         style=STYLE,
     ).ask()
@@ -52,7 +52,6 @@ def ask_action() -> str | None:
 def ask_letter_path(message: str = "Letter file") -> str | None:
     answer = questionary.path(
         message,
-        only_files=True,
         validate=lambda value: (
             (value.endswith(".letter.md") and Path(value).is_file())
             or "Select an existing *.letter.md file"
@@ -156,7 +155,7 @@ def ask_search(facets: SearchFacets) -> InteractiveSearch | None:
         values["date_from"] = date_from or None
         values["date_to"] = date_to or None
     if "folder" in selected:
-        folder = questionary.path("Folder contains", only_directories=True, style=STYLE).ask()
+        folder = questionary.path("Folder contains", style=STYLE).ask()
         if folder is None:
             return None
         values["folder"] = folder or None
@@ -203,10 +202,14 @@ def ask_search_activation(enabled: bool) -> bool | None:
     answer = questionary.select(
         "Optional search",
         choices=[
-            Choice("Keep enabled" if enabled else "Enable", True),
-            Choice("Disable" if enabled else "Keep disabled", False),
-            Choice("Cancel", None),
+            Choice("Keep enabled" if enabled else "Enable", "enable"),
+            Choice("Disable" if enabled else "Keep disabled", "disable"),
+            Choice("Cancel", "cancel"),
         ],
         style=STYLE,
     ).ask()
-    return answer if isinstance(answer, bool) else None
+    if answer == "enable":
+        return True
+    if answer == "disable":
+        return False
+    return None

@@ -10,7 +10,17 @@ build/
 dist/
 output/
 tmp/
-examples/**/build/
+**/build/
+
+# Rendered letters and local letter archives can contain personal data.
+*.pdf
+*.letter.md
+!examples/**/*.letter.md
+
+# Local search indexes and dinbrief workspace state are reproducible.
+.dinbrief/
+*.lance/
+*.sqlite3
 
 vscode-extension/node_modules/
 vscode-extension/*.vsix
