@@ -18,7 +18,8 @@ def test_core_cli_does_not_import_optional_engine() -> None:
             sys.executable,
             "-c",
             "import sys; import dinbrief.cli; "
-            "assert 'lancedb' not in sys.modules; assert 'pyarrow' not in sys.modules",
+            "assert 'lancedb' not in sys.modules; assert 'pyarrow' not in sys.modules; "
+            "assert 'watchfiles' not in sys.modules",
         ],
         check=False,
         capture_output=True,

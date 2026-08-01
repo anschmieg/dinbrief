@@ -19,6 +19,7 @@ tmp/
 
 # Local search indexes and dinbrief workspace state are reproducible.
 .dinbrief/
+.autonomous/
 *.lance/
 *.sqlite3
 

@@ -16,7 +16,6 @@ from markdown_it import MarkdownIt
 from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
-from watchfiles import watch
 
 from .config import load_config, search_enabled, set_search_enabled
 from .diagnostics import Diagnostic, heuristic_diagnostics
@@ -121,6 +120,8 @@ def render_and_open(path: Annotated[Path, typer.Argument(exists=True, dir_okay=F
 @app.command("watch")
 def watch_letter(path: Annotated[Path, typer.Argument(exists=True, dir_okay=False)]) -> None:
     """Re-render whenever the source file is saved."""
+    from watchfiles import watch
+
     path = path.resolve()
     console.print("dinbrief watch ready")
     for _changes in watch(path):

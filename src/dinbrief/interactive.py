@@ -32,6 +32,10 @@ class InteractiveSearch:
     limit: int
 
 
+def _path(value: str) -> Path:
+    return Path(value).expanduser()
+
+
 def ask_action() -> str | None:
     answer = questionary.select(
         "What would you like to do?",
@@ -53,12 +57,12 @@ def ask_letter_path(message: str = "Letter file") -> str | None:
     answer = questionary.path(
         message,
         validate=lambda value: (
-            (value.endswith(".letter.md") and Path(value).is_file())
+            (value.endswith(".letter.md") and _path(value).is_file())
             or "Select an existing *.letter.md file"
         ),
         style=STYLE,
     ).ask()
-    return str(answer) if answer is not None else None
+    return str(_path(str(answer))) if answer is not None else None
 
 
 def ask_new_letter() -> tuple[str, str] | None:
@@ -75,7 +79,7 @@ def ask_new_letter() -> tuple[str, str] | None:
         choices=["de-DE", "en-GB", "en-US"],
         style=STYLE,
     ).ask()
-    return (str(path), str(language)) if language is not None else None
+    return (str(_path(str(path))), str(language)) if language is not None else None
 
 
 def _date_or_empty(value: str) -> bool | str:
@@ -158,7 +162,7 @@ def ask_search(facets: SearchFacets) -> InteractiveSearch | None:
         folder = questionary.path("Folder contains", style=STYLE).ask()
         if folder is None:
             return None
-        values["folder"] = folder or None
+        values["folder"] = str(_path(str(folder))) if folder else None
 
     sort = questionary.select(
         "Sort results",

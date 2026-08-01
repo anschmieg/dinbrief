@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import questionary
@@ -22,6 +23,24 @@ def test_letter_path_uses_questionary_supported_arguments(monkeypatch: Any) -> N
     monkeypatch.setattr(Question, "ask", lambda self: None)
 
     assert ui.ask_letter_path() is None
+
+
+def test_letter_path_expands_home_before_validation(tmp_path: Path, monkeypatch: Any) -> None:
+    letter = tmp_path / "letter.letter.md"
+    letter.write_text("---\n---\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    class _PathPrompt:
+        def ask(self) -> str:
+            return "~/letter.letter.md"
+
+    def path_prompt(message: str, *, validate: Any, **kwargs: Any) -> _PathPrompt:
+        assert validate("~/letter.letter.md") is True
+        return _PathPrompt()
+
+    monkeypatch.setattr(questionary, "path", path_prompt)
+
+    assert ui.ask_letter_path() == str(letter)
 
 
 def test_exit_choice_has_an_explicit_value(monkeypatch: Any) -> None:
