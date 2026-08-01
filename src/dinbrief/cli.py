@@ -22,7 +22,7 @@ from .config import load_config
 from .diagnostics import Diagnostic, heuristic_diagnostics
 from .model import Letter
 from .parser import LetterParseError, parse_file, parse_text
-from .render import render_pdf
+from .render import render_pdf, render_preview
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 setup_app = typer.Typer(no_args_is_help=True)
@@ -295,9 +295,12 @@ def _editor_response(payload: dict[str, Any]) -> dict[str, Any]:
             from .config import cache_dir
 
             target = cache_dir() / "preview.pdf"
+            preview = cache_dir() / "preview.png"
             diagnostics = render_pdf(parsed, target)
+            render_preview(parsed, preview)
             response["diagnostics"] = [item.__dict__ for item in diagnostics]
-            response["preview"] = str(target)
+            response["preview"] = str(preview)
+            response["pdf"] = str(target)
         return response
     except Exception as exc:
         return {"id": payload.get("id"), "diagnostics": [{"severity": "error", "code": "parse", "message": str(exc)}]}

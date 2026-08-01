@@ -9,6 +9,7 @@ module.exports = [
         clearTimeout: "readonly",
         console: "readonly",
         module: "readonly",
+        process: "readonly",
         require: "readonly",
         setTimeout: "readonly"
       }

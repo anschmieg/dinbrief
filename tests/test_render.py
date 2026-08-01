@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from dinbrief.parser import parse_file
-from dinbrief.render import _date_string, build_typst_source, render_pdf
+from dinbrief.render import _date_string, build_typst_source, render_pdf, render_preview
 
 ROOT = Path(__file__).parents[1]
 
@@ -12,6 +12,13 @@ def test_render_pdf(tmp_path: Path) -> None:
     diagnostics = render_pdf(parsed, output)
     assert output.read_bytes().startswith(b"%PDF")
     assert not [item for item in diagnostics if item.severity == "error"]
+
+
+def test_render_preview(tmp_path: Path) -> None:
+    parsed = parse_file(ROOT / "examples" / "en" / "example.letter.md")
+    output = tmp_path / "preview.png"
+    render_preview(parsed, output)
+    assert output.read_bytes().startswith(b"\x89PNG")
 
 
 def test_german_date_uses_sender_city_and_localized_month() -> None:

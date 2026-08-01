@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dinbrief.dev/schema/v1/letter.schema.json",
+  "title": "dinbrief letter",
+  "type": "object",
+  "required": ["format", "recipient", "date", "subject", "salutation", "closing"],
+  "properties": {
+    "format": {"const": "dinbrief/v1", "description": "Version of the dinbrief source format."},
+    "language": {"type": "string", "default": "de-DE", "examples": ["de-DE", "en-GB", "en-US"], "description": "BCP-47 language tag used for typography and generated labels."},
+    "sender": {"description": "Configured sender profile ID or an inline sender.", "oneOf": [{"type": "string"}, {"$ref": "#/$defs/party"}]},
+    "recipient": {"description": "Postal recipient and address.", "$ref": "#/$defs/party"},
+    "date": {"type": "string", "format": "date", "description": "ISO date (YYYY-MM-DD); localized only when rendered."},
+    "location": {"type": "string", "description": "Place shown before the localized date; defaults to sender city."},
+    "subject": {"type": "string", "description": "Printed letter subject."},
+    "salutation": {"type": "string", "description": "Explicit salutation including punctuation."},
+    "closing": {"type": "string", "description": "Explicit closing phrase including punctuation."},
+    "references": {"type": "object", "additionalProperties": {"type": "string"}},
+    "delivery": {"type": "object", "properties": {"method": {"enum": ["print", "email", "both"]}}},
+    "layout": {"$ref": "#/$defs/layout"},
+    "tags": {"type": "array", "items": {"type": "string"}, "description": "Searchable archive tags."},
+    "attachments": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "address": {
+      "type": "object",
+      "required": ["street", "postal_code", "city"],
+      "properties": {
+        "street": {"type": "string", "description": "Street and house number."},
+        "postal_code": {"type": "string"},
+        "city": {"type": "string"},
+        "country": {"type": "string", "examples": ["DE", "GB", "US"]},
+        "extra": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "party": {
+      "type": "object",
+      "required": ["address"],
+      "properties": {
+        "name": {"type": "string"},
+        "organization": {"type": "string"},
+        "department": {"type": "string"},
+        "address": {"$ref": "#/$defs/address"},
+        "phone": {"type": "string"},
+        "email": {"type": "string"},
+        "website": {"type": "string"}
+      }
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "standard": {"const": "din-5008"},
+        "form": {"enum": ["A", "B"]},
+        "window_envelope": {"type": "boolean"},
+        "fold_marks": {"type": "boolean"},
+        "hole_mark": {"type": "boolean"}
+      }
+    }
+  }
+}

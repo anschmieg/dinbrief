@@ -222,3 +222,12 @@ def render_pdf(letter: ParsedLetter, output: Path) -> list[Diagnostic]:
     except Exception:
         pass
     return diagnostics
+
+
+def render_preview(letter: ParsedLetter, output: Path, ppi: float = 120.0) -> None:
+    """Render the first page as PNG for editor previews."""
+    source = build_typst_source(letter).encode()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    rendered = typst.compile(cast(Any, source), format="png", ppi=ppi)
+    first_page = rendered[0] if isinstance(rendered, list) else rendered
+    output.write_bytes(bytes(first_page))
