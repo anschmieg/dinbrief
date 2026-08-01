@@ -4,20 +4,21 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import time
 from email.message import EmailMessage
+from enum import StrEnum
 from importlib.resources import as_file, files
 from pathlib import Path
 from typing import Annotated, Any
 
-import frontmatter
 import typer
 from markdown_it import MarkdownIt
-from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
-from .config import load_config, search_enabled, set_search_enabled
+from . import __version__
+from .config import deep_merge, load_config, search_enabled, set_search_enabled
 from .diagnostics import Diagnostic, heuristic_diagnostics
 from .index import (
     IndexedLetter,
@@ -26,11 +27,12 @@ from .index import (
     SearchUnavailableError,
     database_path,
     index_facets,
+    index_is_stale,
     query_index,
     rebuild_index,
     search_available,
 )
-from .model import Letter, Party
+from .model import Party
 from .parser import LetterParseError, parse_file, parse_text
 from .render import render_pdf, render_preview
 
@@ -38,6 +40,22 @@ app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
 setup_app = typer.Typer(no_args_is_help=True)
 app.add_typer(setup_app, name="setup")
 console = Console()
+
+
+def _version_callback(value: bool) -> None:
+    if value:
+        console.print(f"dinbrief {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        bool,
+        typer.Option("--version", callback=_version_callback, is_eager=True, help="Show version."),
+    ] = False,
+) -> None:
+    """Create, validate, render, and find text-first DIN letters."""
 
 
 def _default_output(path: Path) -> Path:
@@ -51,6 +69,14 @@ def _default_output(path: Path) -> Path:
         stem = relative.name.removesuffix(".letter.md") + ".pdf"
         return root / "build" / relative.parent / stem
     return source.with_name(source.name.removesuffix(".letter.md") + ".pdf")
+
+
+def _resource_text(resource_path: str, source_fallback: Path) -> str:
+    resource = files("dinbrief").joinpath(f"resources/{resource_path}")
+    if resource.is_file():
+        with as_file(resource) as candidate:
+            return candidate.read_text(encoding="utf-8")
+    return (Path(__file__).parents[2] / source_fallback).read_text(encoding="utf-8")
 
 
 def _show_diagnostic(path: str, diagnostic: Diagnostic) -> None:
@@ -110,11 +136,13 @@ def _open_file(path: Path) -> None:
 @app.command("open")
 def render_and_open(path: Annotated[Path, typer.Argument(exists=True, dir_okay=False)]) -> None:
     """Render and open the PDF in the system viewer."""
-    letter = _load(path)
+    render(path, None, False)
     target = _default_output(path).resolve()
-    render_pdf(letter, target)
-    console.print(str(target))
-    _open_file(target)
+    try:
+        _open_file(target)
+    except (OSError, subprocess.SubprocessError) as exc:
+        console.print(f"error: Could not open {target}: {exc}", markup=False)
+        raise typer.Exit(1) from exc
 
 
 @app.command("watch")
@@ -123,6 +151,7 @@ def watch_letter(path: Annotated[Path, typer.Argument(exists=True, dir_okay=Fals
     from watchfiles import watch
 
     path = path.resolve()
+    render(path, None, False)
     console.print("dinbrief watch ready")
     for _changes in watch(path):
         try:
@@ -164,23 +193,38 @@ def email_export(path: Annotated[Path, typer.Argument(exists=True, dir_okay=Fals
 
 
 def _roots() -> list[Path]:
-    return [Path(item).expanduser() for item in load_config().get("roots", [Path.cwd()])]
+    roots = (Path(item).expanduser().resolve() for item in load_config().get("roots", [Path.cwd()]))
+    return list(dict.fromkeys(roots))
 
 
-def _letter_records() -> list[tuple[Path, Any]]:
+def _letter_records() -> tuple[list[tuple[Path, Any]], list[tuple[Path, str]]]:
     records: list[tuple[Path, Any]] = []
+    errors: list[tuple[Path, str]] = []
+    seen: set[Path] = set()
     for root in _roots():
         if root.exists():
             for path in root.rglob("*.letter.md"):
+                path = path.resolve()
+                if path in seen:
+                    continue
+                seen.add(path)
                 try:
                     records.append((path, parse_file(path)))
-                except LetterParseError:
-                    continue
-    return records
+                except LetterParseError as exc:
+                    errors.append((path, str(exc)))
+    return sorted(records, key=lambda item: str(item[0]).casefold()), errors
 
 
 def _sender_name(sender: str | Party) -> str:
     return sender.display_name if isinstance(sender, Party) else sender
+
+
+class ArchiveSort(StrEnum):
+    DATE_DESC = "date-desc"
+    DATE_ASC = "date-asc"
+    RECIPIENT = "recipient"
+    SUBJECT = "subject"
+    PATH = "path"
 
 
 @app.command("list")
@@ -193,10 +237,16 @@ def list_letters(
     date_from: str | None = None,
     date_to: str | None = None,
     folder: str | None = None,
+    sort: ArchiveSort = ArchiveSort.DATE_DESC,
 ) -> None:
     """List letters in configured roots."""
     table = Table("Date", "Recipient", "Subject", "Tags", "Path")
-    for path, letter in _letter_records():
+    rows: list[tuple[Path, Any]] = []
+    filters = _validate_search_filters(
+        SearchFilters(date_from=date_from, date_to=date_to, delivery=delivery)
+    )
+    records, errors = _letter_records()
+    for path, letter in records:
         meta = letter.metadata
         if tag and tag.lower() not in meta.tags:
             continue
@@ -206,14 +256,31 @@ def list_letters(
             continue
         if recipient and recipient.casefold() not in meta.recipient.display_name.casefold():
             continue
-        if delivery and meta.delivery.method != delivery:
+        if filters.delivery and meta.delivery.method != filters.delivery:
             continue
-        if date_from and str(meta.date) < date_from:
+        if filters.date_from and str(meta.date) < filters.date_from:
             continue
-        if date_to and str(meta.date) > date_to:
+        if filters.date_to and str(meta.date) > filters.date_to:
             continue
         if folder and folder.casefold() not in str(path.parent).casefold():
             continue
+        rows.append((path, letter))
+    keys = {
+        ArchiveSort.DATE_DESC: lambda item: (str(item[1].metadata.date), str(item[0]).casefold()),
+        ArchiveSort.DATE_ASC: lambda item: (str(item[1].metadata.date), str(item[0]).casefold()),
+        ArchiveSort.RECIPIENT: lambda item: (
+            item[1].metadata.recipient.display_name.casefold(),
+            str(item[0]).casefold(),
+        ),
+        ArchiveSort.SUBJECT: lambda item: (
+            item[1].metadata.subject.casefold(),
+            str(item[0]).casefold(),
+        ),
+        ArchiveSort.PATH: lambda item: (str(item[0]).casefold(),),
+    }
+    rows.sort(key=keys[sort], reverse=sort == ArchiveSort.DATE_DESC)
+    for path, letter in rows:
+        meta = letter.metadata
         table.add_row(
             str(meta.date),
             meta.recipient.display_name,
@@ -222,6 +289,8 @@ def list_letters(
             str(path),
         )
     console.print(table)
+    for path, message in errors:
+        console.print(f"{path}:1:1: warning: {message} [list]")
 
 
 @app.command("search")
@@ -244,8 +313,12 @@ def search(
     """Search letters with typo tolerance, filters, and sorting."""
     _ensure_search_ready()
     try:
-        if refresh or not database_path().exists():
-            rebuild_index(_roots())
+        roots = _roots()
+        if refresh or index_is_stale(roots):
+            count, errors = rebuild_index(roots)
+            console.print(f"Refreshed search index: {count} letters")
+            for path, message in errors:
+                console.print(f"{path}:1:1: warning: {message} [index]")
         filters = SearchFilters(
             tag=tag,
             language=language,
@@ -269,6 +342,9 @@ def search(
             sort = request.sort
             fuzziness = request.fuzziness
             limit = request.limit
+        query = query.strip()
+        if not query:
+            raise typer.BadParameter("QUERY must not be empty")
         filters = _validate_search_filters(filters)
         results = query_index(
             query,
@@ -346,9 +422,11 @@ def _ensure_search_ready() -> None:
 @app.command("new")
 def new(path: Path = Path("new.letter.md"), language: str = "de-DE") -> None:
     """Create a minimal self-contained letter source."""
+    path = path.expanduser()
     if path.exists():
         raise typer.BadParameter(f"File already exists: {path}")
     sample = _sample(language)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(sample, encoding="utf-8")
     console.print(str(path.resolve()))
 
@@ -389,13 +467,58 @@ def setup_vscode(
     folder: Annotated[Path | None, typer.Argument()] = None,
 ) -> None:
     """Install VS Code tasks for the active *.letter.md file."""
-    vscode = (folder or Path.cwd()).resolve() / ".vscode"
+    vscode = (folder.expanduser() if folder else Path.cwd()).resolve() / ".vscode"
     vscode.mkdir(parents=True, exist_ok=True)
+    updates: dict[Path, dict[str, Any]] = {}
     for name in ("tasks.json", "settings.json", "extensions.json"):
-        resource = files("dinbrief").joinpath(f"resources/vscode/{name}")
-        with as_file(resource) as candidate:
-            (vscode / name).write_text(candidate.read_text(encoding="utf-8"), encoding="utf-8")
+        bundled = json.loads(_resource_text(f"vscode/{name}", Path(".vscode") / name))
+        destination = vscode / name
+        current: dict[str, Any] = {}
+        if destination.exists():
+            try:
+                current = json.loads(destination.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as exc:
+                raise typer.BadParameter(
+                    f"Cannot safely update {destination}: {exc}. The file was left unchanged."
+                ) from exc
+        merged = _merge_vscode_file(name, current, bundled)
+        updates[destination] = merged
+    for destination, merged in updates.items():
+        _write_json_atomic(destination, merged)
     console.print(str(vscode))
+
+
+def _merge_vscode_file(
+    name: str, current: dict[str, Any], bundled: dict[str, Any]
+) -> dict[str, Any]:
+    if name == "tasks.json":
+        labels = {task.get("label") for task in bundled.get("tasks", [])}
+        retained = [task for task in current.get("tasks", []) if task.get("label") not in labels]
+        result = deep_merge(bundled, current)
+        result["tasks"] = [*retained, *bundled.get("tasks", [])]
+        return result
+    if name == "extensions.json":
+        result = deep_merge(bundled, current)
+        result["recommendations"] = list(
+            dict.fromkeys([*current.get("recommendations", []), *bundled.get("recommendations", [])])
+        )
+        return result
+    return deep_merge(bundled, current)
+
+
+def _write_json_atomic(path: Path, data: dict[str, Any]) -> None:
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", delete=False
+        ) as handle:
+            json.dump(data, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            temporary = Path(handle.name)
+        temporary.replace(path)
+    finally:
+        if temporary and temporary.exists():
+            temporary.unlink()
 
 
 @setup_app.command("search")
@@ -469,10 +592,10 @@ def interactive_shell() -> None:
 @app.command("schema")
 def schema(output: Path | None = None) -> None:
     """Print or copy the bundled JSON Schema."""
-    resource = files("dinbrief").joinpath("resources/schemas/letter.schema.json")
-    with as_file(resource) as schema_path:
-        data = schema_path.read_text(encoding="utf-8")
+    data = _resource_text("schemas/letter.schema.json", Path("schemas/letter.schema.json"))
     if output:
+        output = output.expanduser()
+        output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(data, encoding="utf-8")
         console.print(str(output.resolve()))
     else:
@@ -484,11 +607,9 @@ def validate_json() -> None:
     """Internal stdin JSON validation endpoint for editor integrations."""
     payload: dict[str, Any] = json.load(sys.stdin)
     try:
-        post = frontmatter.loads(payload["text"])
-        Letter.model_validate(post.metadata)
         parsed = parse_text(payload["text"])
         result = {"diagnostics": [item.__dict__ for item in heuristic_diagnostics(parsed)]}
-    except (LetterParseError, ValidationError, KeyError) as exc:
+    except (LetterParseError, KeyError) as exc:
         result = {"diagnostics": [{"severity": "error", "code": "parse", "message": str(exc)}]}
     json.dump(result, sys.stdout)
 
@@ -499,10 +620,13 @@ def _editor_response(payload: dict[str, Any]) -> dict[str, Any]:
         diagnostics = heuristic_diagnostics(parsed)
         response: dict[str, Any] = {"id": payload.get("id"), "diagnostics": [item.__dict__ for item in diagnostics]}
         if payload.get("render"):
+            import hashlib
+
             from .config import cache_dir
 
-            target = cache_dir() / "preview.pdf"
-            preview = cache_dir() / "preview.png"
+            document_key = hashlib.sha256(str(payload.get("uri", "<editor>")).encode()).hexdigest()[:16]
+            target = cache_dir() / f"preview-{document_key}.pdf"
+            preview = cache_dir() / f"preview-{document_key}.png"
             diagnostics = render_pdf(parsed, target)
             render_preview(parsed, preview)
             response["diagnostics"] = [item.__dict__ for item in diagnostics]

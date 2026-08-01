@@ -12,6 +12,13 @@ from dinbrief.index import SearchFilters
 runner = CliRunner()
 
 
+def test_cli_reports_installed_version() -> None:
+    result = runner.invoke(cli.app, ["--version"])
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("dinbrief 0.5.")
+
+
 def test_core_cli_does_not_import_optional_engine() -> None:
     result = subprocess.run(
         [

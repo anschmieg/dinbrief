@@ -57,14 +57,25 @@ def test_rebuild_and_unicode_search(tmp_path: Path, monkeypatch: object) -> None
         encoding="utf-8",
     )
 
-    count, errors = index.rebuild_index([tmp_path])
+    count, errors = index.rebuild_index([tmp_path, source.parent])
 
     assert count == 1
     assert errors == []
+    assert index.index_is_stale([tmp_path]) is False
     assert [item.path for item in index.query_index("änderung")] == [source]
     assert [item.path for item in index.query_index("KÖLN")] == [source]
     assert [item.path for item in index.query_index("schätzung")] == [source]
     assert [item.path for item in index.query_index("Steuerbescheits")] == [source]
+
+    source.write_text(
+        _letter("Änderung des Steuerbescheids", "Geänderter Inhalt.", ["steuer"]),
+        encoding="utf-8",
+    )
+    assert index.index_is_stale([tmp_path]) is True
+    index.rebuild_index([tmp_path])
+    assert index.index_is_stale([tmp_path]) is False
+    source.unlink()
+    assert index.index_is_stale([tmp_path]) is True
 
 
 @pytest.mark.skipif(not index.search_available(), reason="optional search extra is not installed")

@@ -62,5 +62,4 @@ def effective_metadata(raw: dict[str, Any]) -> dict[str, Any]:
         if sender not in profiles:
             raise ValueError(f"Unknown sender profile: {sender}")
         merged["sender"] = profiles[sender]
-        merged["sender_profile"] = sender
     return merged

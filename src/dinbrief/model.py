@@ -6,19 +6,20 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class LenientModel(BaseModel):
-    model_config = ConfigDict(extra="allow")
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
 
-class Address(LenientModel):
+class Address(StrictModel):
     street: str
     postal_code: str
     city: str
+    region: str | None = None
     country: str = Field(default="DE", pattern=r"^[A-Z]{2}$")
     extra: list[str] = Field(default_factory=list)
 
 
-class Party(LenientModel):
+class Party(StrictModel):
     name: str | None = None
     organization: str | None = None
     department: str | None = None
@@ -43,7 +44,7 @@ class Party(LenientModel):
         raise ValueError("A party needs either name or organization")
 
 
-class Layout(LenientModel):
+class Layout(StrictModel):
     standard: Literal["din-5008"] = "din-5008"
     form: Literal["A", "B"] = "B"
     window_envelope: bool = True
@@ -51,11 +52,11 @@ class Layout(LenientModel):
     hole_mark: bool = True
 
 
-class Delivery(LenientModel):
+class Delivery(StrictModel):
     method: Literal["print", "email", "both"] = "both"
 
 
-class Letter(LenientModel):
+class Letter(StrictModel):
     format: Literal["dinbrief/v1"] = "dinbrief/v1"
     language: str = Field(default="de-DE", pattern=r"^[a-z]{2}(?:-[A-Z]{2})?$")
     sender: str | Party

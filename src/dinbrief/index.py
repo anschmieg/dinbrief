@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -8,7 +9,7 @@ from enum import StrEnum
 from functools import lru_cache
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from .config import cache_dir
 from .model import ParsedLetter, Party
@@ -72,6 +73,11 @@ def search_available() -> bool:
 
 def database_path() -> Path:
     return cache_dir() / f"search-v{INDEX_VERSION}.lance"
+
+
+def index_state_path() -> Path:
+    database = database_path()
+    return database.with_name(f"{database.name}.sources.json")
 
 
 def _require_search() -> None:
@@ -151,19 +157,50 @@ def _schema() -> object:
     )
 
 
+def _letter_paths(roots: Iterable[Path]) -> list[Path]:
+    paths: set[Path] = set()
+    for root in roots:
+        expanded = root.expanduser()
+        if not expanded.exists() or not expanded.is_dir():
+            continue
+        paths.update(path.resolve() for path in expanded.rglob("*.letter.md") if path.is_file())
+    return sorted(paths, key=lambda path: str(path).casefold())
+
+
+def _source_snapshot(paths: Iterable[Path]) -> list[list[str | int]]:
+    snapshot: list[list[str | int]] = []
+    for path in paths:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        snapshot.append([str(path), stat.st_mtime_ns, stat.st_size])
+    return snapshot
+
+
+def index_is_stale(roots: Iterable[Path]) -> bool:
+    state = index_state_path()
+    if not database_path().exists() or not state.exists():
+        return True
+    paths = _letter_paths(roots)
+    try:
+        previous = cast(list[list[str | int]], json.loads(state.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, OSError):
+        return True
+    return previous != _source_snapshot(paths)
+
+
 def rebuild_index(roots: Iterable[Path]) -> tuple[int, list[tuple[Path, str]]]:
     _require_search()
 
     records: list[IndexedLetter] = []
     errors: list[tuple[Path, str]] = []
-    for root in roots:
-        if not root.exists():
-            continue
-        for path in root.rglob("*.letter.md"):
-            try:
-                records.append(_record(path, parse_file(path)))
-            except LetterParseError as exc:
-                errors.append((path, str(exc)))
+    paths = _letter_paths(roots)
+    for path in paths:
+        try:
+            records.append(_record(path, parse_file(path)))
+        except LetterParseError as exc:
+            errors.append((path, str(exc)))
 
     database = _connect(database_path())
     table = database.create_table(
@@ -180,6 +217,8 @@ def rebuild_index(roots: Iterable[Path]) -> tuple[int, list[tuple[Path, str]]]:
         config=FTS(stem=False, remove_stop_words=False, ascii_folding=True),
         replace=True,
     )
+    state = index_state_path()
+    state.write_text(json.dumps(_source_snapshot(paths), ensure_ascii=False), encoding="utf-8")
     return len(records), errors
 
 

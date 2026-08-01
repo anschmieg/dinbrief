@@ -41,7 +41,7 @@ ENGLISH_MONTHS = (
 )
 
 
-def _party_lines(party: Party, language: str) -> list[str]:
+def _party_lines(party: Party, home_country: str | None = None) -> list[str]:
     lines: list[str] = []
     if party.name:
         lines.append(party.name)
@@ -52,11 +52,13 @@ def _party_lines(party: Party, language: str) -> list[str]:
     lines.extend(party.address.extra)
     lines.append(party.address.street)
     if party.address.country == "US":
-        lines.append(f"{party.address.city}, {party.address.postal_code}")
+        locality = f"{party.address.city},"
+        if party.address.region:
+            locality += f" {party.address.region}"
+        lines.append(f"{locality} {party.address.postal_code}")
     else:
         lines.append(f"{party.address.postal_code} {party.address.city}")
-    home_country = "DE" if language.startswith("de") else party.address.country
-    if party.address.country != home_country:
+    if home_country and party.address.country != home_country:
         lines.append(COUNTRY_NAMES.get(party.address.country, party.address.country))
     return lines
 
@@ -91,8 +93,10 @@ def _reference_markup(references: dict[str, str]) -> str:
 def build_typst_source(letter: ParsedLetter) -> str:
     meta = letter.metadata
     assert isinstance(meta.sender, Party)
+    sender_country = meta.sender.address.country
     recipient = " \\\n".join(
-        escape_typst(line) for line in _party_lines(meta.recipient, meta.language)
+        escape_typst(line)
+        for line in _party_lines(meta.recipient, sender_country)
     )
     sender_address = (
         f"{meta.sender.address.street}, {meta.sender.address.postal_code} "
@@ -101,7 +105,7 @@ def build_typst_source(letter: ParsedLetter) -> str:
     sender_short = escape_typst(f"{meta.sender.display_name} · {sender_address}")
     sender_lines = " \\\n".join(
         escape_typst(line)
-        for line in _party_lines(meta.sender, meta.language)
+        for line in _party_lines(meta.sender, sender_country)
         if line != meta.sender.display_name
     )
     references = _reference_markup(meta.references)
@@ -177,10 +181,12 @@ def build_typst_source(letter: ParsedLetter) -> str:
 
 {markdown_to_typst(letter.body)}
 
+#block(breakable: false)[
 #v(6mm)
 {escape_typst(meta.closing)}
 #v(12mm)
 {escape_typst(meta.sender.display_name)}
+]
 ]
 {attachments}
 '''

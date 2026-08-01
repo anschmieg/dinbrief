@@ -3,6 +3,7 @@
   "$id": "https://dinbrief.dev/schema/v1/letter.schema.json",
   "title": "dinbrief letter",
   "type": "object",
+  "additionalProperties": false,
   "required": ["format", "recipient", "date", "subject", "salutation", "closing"],
   "properties": {
     "format": {"const": "dinbrief/v1", "description": "Version of the dinbrief source format."},
@@ -15,7 +16,7 @@
     "salutation": {"type": "string", "minLength": 1, "description": "Explicit salutation including punctuation."},
     "closing": {"type": "string", "minLength": 1, "description": "Explicit closing phrase including punctuation."},
     "references": {"type": "object", "additionalProperties": {"type": "string"}},
-    "delivery": {"type": "object", "properties": {"method": {"enum": ["print", "email", "both"]}}},
+    "delivery": {"type": "object", "additionalProperties": false, "properties": {"method": {"enum": ["print", "email", "both"]}}},
     "layout": {"$ref": "#/$defs/layout"},
     "tags": {"type": "array", "description": "Searchable archive tags; they never affect layout.", "items": {"type": "string"}, "uniqueItems": true},
     "attachments": {"type": "array", "items": {"type": "string"}}
@@ -23,14 +24,17 @@
   "$defs": {
     "address": {
       "type": "object", "required": ["street", "postal_code", "city"],
+      "additionalProperties": false,
       "properties": {
         "street": {"type": "string", "description": "Street and house number."}, "postal_code": {"type": "string"},
-        "city": {"type": "string"}, "country": {"type": "string", "pattern": "^[A-Z]{2}$"},
+        "city": {"type": "string"}, "region": {"type": "string", "description": "State, province, or region where required by the postal format."},
+        "country": {"type": "string", "pattern": "^[A-Z]{2}$", "default": "DE"},
         "extra": {"type": "array", "items": {"type": "string"}}
       }
     },
     "party": {
       "type": "object", "required": ["address"],
+      "additionalProperties": false,
       "anyOf": [
         {"required": ["name"]},
         {"required": ["organization"]}
@@ -44,6 +48,7 @@
     },
     "layout": {
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "standard": {"const": "din-5008"}, "form": {"enum": ["A", "B"]},
         "window_envelope": {"type": "boolean"}, "fold_marks": {"type": "boolean"},
