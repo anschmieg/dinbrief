@@ -2,6 +2,15 @@
 
 All notable changes to dinbrief are recorded here.
 
+## 0.4.0 — 2026-08-01
+
+- Replace the provisional SQLite search implementation with optional embedded LanceDB search.
+- Keep search and its larger binary dependencies out of the default installation.
+- Add explicit search activation, deactivation and status commands.
+- Add BM25 ranking, accent normalization and configurable typo tolerance.
+- Prepare the index model for optional vector and hybrid semantic search.
+- Test both minimal and search-enabled installations in CI.
+
 ## 0.3.0 — 2026-08-01
 
 - Add a rebuildable local SQLite search index without moving or copying source letters.
