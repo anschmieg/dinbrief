@@ -22,6 +22,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+search = [
+  "lancedb>=0.34,<0.35",
+]
 dev = [
   "bandit>=1.8",
   "mypy>=1.15",

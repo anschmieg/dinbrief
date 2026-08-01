@@ -19,10 +19,27 @@ def cache_dir() -> Path:
 
 def load_config() -> dict[str, Any]:
     path = config_dir() / "config.toml"
-    if not path.exists():
-        return {}
-    with path.open("rb") as handle:
-        return tomllib.load(handle)
+    config: dict[str, Any] = {}
+    if path.exists():
+        with path.open("rb") as handle:
+            config = tomllib.load(handle)
+    state_path = config_dir() / "features.toml"
+    if state_path.exists():
+        with state_path.open("rb") as handle:
+            config = deep_merge(config, tomllib.load(handle))
+    return config
+
+
+def search_enabled() -> bool:
+    return bool(load_config().get("search", {}).get("enabled", False))
+
+
+def set_search_enabled(enabled: bool) -> Path:
+    directory = config_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "features.toml"
+    path.write_text(f"[search]\nenabled = {'true' if enabled else 'false'}\n", encoding="utf-8")
+    return path
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

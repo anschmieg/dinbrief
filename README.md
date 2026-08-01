@@ -13,6 +13,21 @@ dinbrief check examples/de/example.letter.md
 dinbrief render examples/de/example.letter.md
 ```
 
+Search is an optional feature because its embedded LanceDB engine adds a larger binary
+dependency. Install and activate it explicitly:
+
+```bash
+uv tool install 'dinbrief[search]'
+dinbrief setup search --enable
+dinbrief index
+dinbrief search "Steuerbescheit"
+```
+
+Search is disabled by default even when the extra is installed. `dinbrief setup search` reports
+both installation and activation state; `--disable` turns it off without deleting the rebuildable
+cache. Reinstalling plain `dinbrief` omits the optional engine again. Letter sources remain the
+sole source of truth.
+
 Without a configured archive root, the PDF is written directly beside the source. For sources
 inside a configured `roots` entry, output is collected below `<root>/build/` while preserving
 the relative folder structure. Sender defaults and search roots can be configured later; an
@@ -36,11 +51,14 @@ field overrides the sender city in the localized date line, for example
 - `dinbrief search termination`
 - `dinbrief search --refresh termination`
 - `dinbrief index`
+- `dinbrief setup search --enable`
+- `dinbrief setup search --disable`
 - `dinbrief setup vscode .`
 
 `list` can additionally filter by language, sender, recipient, delivery method, folder and an
-ISO date range. `search` uses a rebuildable SQLite index in the user cache; source files remain
-the sole source of truth and are never moved, copied or linked.
+ISO date range. When installed and enabled, `search` uses a rebuildable LanceDB full-text index
+with BM25 ranking and typo tolerance. Source files are never moved, copied or linked. The index
+schema deliberately leaves room for an optional vector column and hybrid semantic search later.
 
 ## Configuration
 

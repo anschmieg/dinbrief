@@ -24,7 +24,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Install project and development tools
-        run: uv sync --extra dev
+        run: uv sync --extra dev --extra search
       - name: Lint
         run: uv run ruff check src tests
       - name: Type check
@@ -33,6 +33,23 @@ jobs:
         run: uv run pytest -q
       - name: Security scan
         run: uv run bandit -r src -ll
+
+  minimal-install:
+    name: Core package without search extra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --extra dev
+      - name: Verify optional engine stays unloaded
+        run: >-
+          uv run python -c "import sys; import dinbrief.cli;
+          assert 'lancedb' not in sys.modules; assert 'pyarrow' not in sys.modules"
+      - name: Test core-only installation
+        run: uv run pytest -q
 
   extension:
     name: VS Code extension

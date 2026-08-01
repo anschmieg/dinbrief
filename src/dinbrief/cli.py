@@ -18,9 +18,15 @@ from rich.console import Console
 from rich.table import Table
 from watchfiles import watch
 
-from .config import load_config
+from .config import load_config, search_enabled, set_search_enabled
 from .diagnostics import Diagnostic, heuristic_diagnostics
-from .index import database_path, query_index, rebuild_index
+from .index import (
+    SearchUnavailableError,
+    database_path,
+    query_index,
+    rebuild_index,
+    search_available,
+)
 from .model import Letter, Party
 from .parser import LetterParseError, parse_file, parse_text
 from .render import render_pdf, render_preview
@@ -214,36 +220,48 @@ def list_letters(
 
 
 @app.command("search")
-def search(query: str, refresh: bool = False) -> None:
+def search(
+    query: str,
+    refresh: bool = False,
+    fuzziness: Annotated[int, typer.Option(min=0, max=2)] = 1,
+) -> None:
     """Search metadata and body text across configured roots."""
-    if refresh or not database_path().exists():
-        rebuild_index(_roots())
-    indexed = query_index(query)
-    if indexed:
-        for item in indexed:
+    _ensure_search_ready()
+    try:
+        if refresh or not database_path().exists():
+            rebuild_index(_roots())
+        for item in query_index(query, fuzziness=fuzziness):
             console.print(str(item.path))
-        return
-    needle = query.casefold()
-    for path, letter in _letter_records():
-        haystack = " ".join(
-            [
-                letter.metadata.subject,
-                letter.metadata.recipient.display_name,
-                *letter.metadata.tags,
-                letter.body,
-            ]
-        ).casefold()
-        if needle in haystack:
-            console.print(str(path))
+    except SearchUnavailableError as exc:
+        console.print(f"error: {exc}", markup=False)
+        raise typer.Exit(2) from exc
 
 
 @app.command("index")
 def index_letters() -> None:
     """Rebuild the optional search index from configured roots."""
-    count, errors = rebuild_index(_roots())
+    _ensure_search_ready()
+    try:
+        count, errors = rebuild_index(_roots())
+    except SearchUnavailableError as exc:
+        console.print(f"error: {exc}", markup=False)
+        raise typer.Exit(2) from exc
     console.print(f"Indexed {count} letters in {database_path()}")
     for path, message in errors:
         console.print(f"{path}:1:1: warning: {message} [index]")
+
+
+def _ensure_search_ready() -> None:
+    if not search_enabled():
+        console.print("error: Optional search is disabled. Enable it with: dinbrief setup search --enable")
+        raise typer.Exit(2)
+    if not search_available():
+        console.print(
+            "error: Optional search support is not installed. "
+            "Install it with: uv tool install 'dinbrief[search]'",
+            markup=False,
+        )
+        raise typer.Exit(2)
 
 
 @app.command("new")
@@ -299,6 +317,26 @@ def setup_vscode(
         with as_file(resource) as candidate:
             (vscode / name).write_text(candidate.read_text(encoding="utf-8"), encoding="utf-8")
     console.print(str(vscode))
+
+
+@setup_app.command("search")
+def setup_search(enable: bool = False, disable: bool = False) -> None:
+    """Enable, disable, or show the status of optional search support."""
+    if enable and disable:
+        raise typer.BadParameter("Choose either --enable or --disable")
+    if not enable and not disable:
+        state = "enabled" if search_enabled() else "disabled"
+        installed = "installed" if search_available() else "not installed"
+        console.print(f"Search is {state}; optional package is {installed}.")
+        return
+    if enable and not search_available():
+        console.print(
+            "error: Install search support first with: uv tool install 'dinbrief[search]'",
+            markup=False,
+        )
+        raise typer.Exit(2)
+    path = set_search_enabled(enable)
+    console.print(f"Search {'enabled' if enable else 'disabled'}: {path}")
 
 
 @app.command("schema")
