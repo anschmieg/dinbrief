@@ -21,8 +21,12 @@ from watchfiles import watch
 from .config import load_config, search_enabled, set_search_enabled
 from .diagnostics import Diagnostic, heuristic_diagnostics
 from .index import (
+    IndexedLetter,
+    SearchFilters,
+    SearchSort,
     SearchUnavailableError,
     database_path,
+    index_facets,
     query_index,
     rebuild_index,
     search_available,
@@ -221,20 +225,94 @@ def list_letters(
 
 @app.command("search")
 def search(
-    query: str,
+    query: Annotated[str | None, typer.Argument()] = None,
     refresh: bool = False,
     fuzziness: Annotated[int, typer.Option(min=0, max=2)] = 1,
+    tag: str | None = None,
+    language: str | None = None,
+    sender: str | None = None,
+    recipient: str | None = None,
+    delivery: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    folder: str | None = None,
+    sort: SearchSort = SearchSort.RELEVANCE,
+    limit: Annotated[int, typer.Option(min=1, max=500)] = 50,
+    interactive: Annotated[bool, typer.Option("--interactive", "-i")] = False,
 ) -> None:
-    """Search metadata and body text across configured roots."""
+    """Search letters with typo tolerance, filters, and sorting."""
     _ensure_search_ready()
     try:
         if refresh or not database_path().exists():
             rebuild_index(_roots())
-        for item in query_index(query, fuzziness=fuzziness):
-            console.print(str(item.path))
+        filters = SearchFilters(
+            tag=tag,
+            language=language,
+            sender=sender,
+            recipient=recipient,
+            delivery=delivery,
+            date_from=date_from,
+            date_to=date_to,
+            folder=folder,
+        )
+        if interactive or query is None:
+            if not sys.stdin.isatty():
+                raise typer.BadParameter("QUERY is required outside an interactive terminal")
+            from .interactive import ask_search
+
+            request = ask_search(index_facets())
+            if request is None:
+                raise typer.Exit()
+            query = request.query
+            filters = request.filters
+            sort = request.sort
+            fuzziness = request.fuzziness
+            limit = request.limit
+        filters = _validate_search_filters(filters)
+        results = query_index(
+            query,
+            filters=filters,
+            sort=sort,
+            fuzziness=fuzziness,
+            limit=limit,
+        )
+        _print_search_results(results)
     except SearchUnavailableError as exc:
         console.print(f"error: {exc}", markup=False)
         raise typer.Exit(2) from exc
+
+
+def _print_search_results(results: list[IndexedLetter]) -> None:
+    if not results:
+        console.print("No matching letters.", style="yellow")
+        return
+    table = Table("Score", "Date", "Recipient", "Subject", "Tags", "Path")
+    for item in results:
+        score = f"{item.score:.2f}" if item.score is not None else ""
+        table.add_row(
+            score,
+            item.date,
+            item.recipient,
+            item.subject,
+            ", ".join(item.tags),
+            str(item.path),
+        )
+    console.print(table)
+
+
+def _validate_search_filters(filters: SearchFilters) -> SearchFilters:
+    for value in (filters.date_from, filters.date_to):
+        if value is None:
+            continue
+        try:
+            time.strptime(value, "%Y-%m-%d")
+        except ValueError as exc:
+            raise typer.BadParameter(f"Invalid ISO date: {value}") from exc
+    if filters.date_from and filters.date_to and filters.date_from > filters.date_to:
+        raise typer.BadParameter("--date-from must not be later than --date-to")
+    if filters.delivery and filters.delivery not in {"print", "email", "both"}:
+        raise typer.BadParameter("--delivery must be print, email, or both")
+    return filters
 
 
 @app.command("index")
@@ -328,6 +406,13 @@ def setup_search(enable: bool = False, disable: bool = False) -> None:
         state = "enabled" if search_enabled() else "disabled"
         installed = "installed" if search_available() else "not installed"
         console.print(f"Search is {state}; optional package is {installed}.")
+        if sys.stdin.isatty() and search_available():
+            from .interactive import ask_search_activation
+
+            choice = ask_search_activation(search_enabled())
+            if choice is not None and choice != search_enabled():
+                path = set_search_enabled(choice)
+                console.print(f"Search {'enabled' if choice else 'disabled'}: {path}")
         return
     if enable and not search_available():
         console.print(
@@ -337,6 +422,38 @@ def setup_search(enable: bool = False, disable: bool = False) -> None:
         raise typer.Exit(2)
     path = set_search_enabled(enable)
     console.print(f"Search {'enabled' if enable else 'disabled'}: {path}")
+
+
+@app.command("shell")
+def interactive_shell() -> None:
+    """Open an inline interactive menu for common dinbrief actions."""
+    if not sys.stdin.isatty():
+        raise typer.BadParameter("The interactive shell requires a terminal")
+    from .interactive import ask_action, ask_letter_path, ask_new_letter
+
+    while (action := ask_action()) is not None:
+        try:
+            if action == "search":
+                search(query=None, interactive=True)
+            elif action in {"check", "render", "open"}:
+                selected = ask_letter_path()
+                if selected is None:
+                    continue
+                path = Path(selected)
+                if action == "check":
+                    check(path)
+                elif action == "render":
+                    render(path, None, False)
+                else:
+                    render_and_open(path)
+            elif action == "new":
+                details = ask_new_letter()
+                if details is not None:
+                    new(Path(details[0]), details[1])
+            elif action == "setup-search":
+                setup_search(False, False)
+        except typer.Exit:
+            continue
 
 
 @app.command("schema")

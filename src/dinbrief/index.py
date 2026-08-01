@@ -4,6 +4,7 @@ import unicodedata
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import timedelta
+from enum import StrEnum
 from functools import lru_cache
 from importlib.util import find_spec
 from pathlib import Path
@@ -13,8 +14,17 @@ from .config import cache_dir
 from .model import ParsedLetter, Party
 from .parser import LetterParseError, parse_file
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 TABLE_NAME = "letters"
+
+
+class SearchSort(StrEnum):
+    RELEVANCE = "relevance"
+    DATE_DESC = "date-desc"
+    DATE_ASC = "date-asc"
+    RECIPIENT = "recipient"
+    SUBJECT = "subject"
+    PATH = "path"
 
 
 class SearchUnavailableError(RuntimeError):
@@ -32,6 +42,28 @@ class IndexedLetter:
     delivery: str
     tags: tuple[str, ...]
     body: str
+    score: float | None = None
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    tag: str | None = None
+    language: str | None = None
+    sender: str | None = None
+    recipient: str | None = None
+    delivery: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
+    folder: str | None = None
+
+
+@dataclass(frozen=True)
+class SearchFacets:
+    tags: tuple[str, ...] = ()
+    languages: tuple[str, ...] = ()
+    senders: tuple[str, ...] = ()
+    recipients: tuple[str, ...] = ()
+    deliveries: tuple[str, ...] = ()
 
 
 def search_available() -> bool:
@@ -75,12 +107,25 @@ def _record(path: Path, letter: ParsedLetter) -> IndexedLetter:
 
 def _lance_record(item: IndexedLetter) -> dict[str, object]:
     record = asdict(item)
+    record.pop("score")
     record["path"] = str(item.path)
     record["tags"] = list(item.tags)
     record["search_text"] = "\n".join(
         (str(item.path), item.sender, item.recipient, item.subject, *item.tags, item.body)
     )
+    record["sender_key"] = _normalize(item.sender)
+    record["recipient_key"] = _normalize(item.recipient)
+    record["path_key"] = _normalize(str(item.path))
+    record["tags_key"] = "|" + "|".join(_normalize(tag) for tag in item.tags) + "|"
     return record
+
+
+def _normalize(value: str) -> str:
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFKD", value)
+        if not unicodedata.combining(character)
+    ).casefold()
 
 
 def _schema() -> object:
@@ -98,6 +143,10 @@ def _schema() -> object:
             pa.field("tags", pa.list_(pa.string()), nullable=False),
             pa.field("body", pa.string(), nullable=False),
             pa.field("search_text", pa.string(), nullable=False),
+            pa.field("sender_key", pa.string(), nullable=False),
+            pa.field("recipient_key", pa.string(), nullable=False),
+            pa.field("path_key", pa.string(), nullable=False),
+            pa.field("tags_key", pa.string(), nullable=False),
         ]
     )
 
@@ -134,22 +183,75 @@ def rebuild_index(roots: Iterable[Path]) -> tuple[int, list[tuple[Path, str]]]:
     return len(records), errors
 
 
-def query_index(query: str, *, fuzziness: int = 1, limit: int = 50) -> list[IndexedLetter]:
+def _quote(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _where(filters: SearchFilters) -> str | None:
+    clauses: list[str] = []
+    if filters.tag:
+        clauses.append(f"tags_key LIKE {_quote(f'%|{_normalize(filters.tag)}|%')}")
+    if filters.language:
+        clauses.append(f"language = {_quote(filters.language)}")
+    if filters.sender:
+        clauses.append(f"sender_key LIKE {_quote(f'%{_normalize(filters.sender)}%')}")
+    if filters.recipient:
+        clauses.append(f"recipient_key LIKE {_quote(f'%{_normalize(filters.recipient)}%')}")
+    if filters.delivery:
+        clauses.append(f"delivery = {_quote(filters.delivery)}")
+    if filters.date_from:
+        clauses.append(f"date >= {_quote(filters.date_from)}")
+    if filters.date_to:
+        clauses.append(f"date <= {_quote(filters.date_to)}")
+    if filters.folder:
+        clauses.append(f"path_key LIKE {_quote(f'%{_normalize(filters.folder)}%')}")
+    return " AND ".join(clauses) or None
+
+
+def _sort_results(items: list[IndexedLetter], order: SearchSort) -> list[IndexedLetter]:
+    if order == SearchSort.RELEVANCE:
+        return items
+    if order in {SearchSort.DATE_DESC, SearchSort.DATE_ASC}:
+        path_sorted = sorted(items, key=lambda item: str(item.path).casefold())
+        return sorted(
+            path_sorted,
+            key=lambda item: item.date,
+            reverse=order == SearchSort.DATE_DESC,
+        )
+    key = {
+        SearchSort.RECIPIENT: lambda item: (
+            item.recipient.casefold(),
+            item.date,
+            str(item.path),
+        ),
+        SearchSort.SUBJECT: lambda item: (item.subject.casefold(), item.date, str(item.path)),
+        SearchSort.PATH: lambda item: (str(item.path).casefold(),),
+    }[order]
+    return sorted(items, key=key)
+
+
+def query_index(
+    query: str,
+    *,
+    filters: SearchFilters | None = None,
+    sort: SearchSort = SearchSort.RELEVANCE,
+    fuzziness: int = 1,
+    limit: int = 50,
+) -> list[IndexedLetter]:
     _require_search()
     if not database_path().exists():
         return []
 
     from lancedb.query import MatchQuery  # type: ignore[import-untyped]
 
-    normalized_query = "".join(
-        character
-        for character in unicodedata.normalize("NFKD", query)
-        if not unicodedata.combining(character)
-    ).casefold()
+    normalized_query = _normalize(query)
     table = _connect(database_path()).open_table(TABLE_NAME)
+    builder = table.search(MatchQuery(normalized_query, "search_text", fuzziness=fuzziness))
+    expression = _where(filters or SearchFilters())
+    if expression:
+        builder = builder.where(expression, prefilter=True)
     rows = (
-        table.search(MatchQuery(normalized_query, "search_text", fuzziness=fuzziness))
-        .select(
+        builder.select(
             [
                 "path",
                 "date",
@@ -163,10 +265,10 @@ def query_index(query: str, *, fuzziness: int = 1, limit: int = 50) -> list[Inde
                 "_score",
             ]
         )
-        .limit(limit)
+        .limit(limit if sort == SearchSort.RELEVANCE else 10_000)
         .to_list()
     )
-    return [
+    results = [
         IndexedLetter(
             path=Path(row["path"]),
             date=row["date"],
@@ -177,6 +279,25 @@ def query_index(query: str, *, fuzziness: int = 1, limit: int = 50) -> list[Inde
             delivery=row["delivery"],
             tags=tuple(row["tags"]),
             body=row["body"],
+            score=float(row["_score"]) if row.get("_score") is not None else None,
         )
         for row in rows
     ]
+    return _sort_results(results, sort)[:limit]
+
+
+def index_facets() -> SearchFacets:
+    _require_search()
+    if not database_path().exists():
+        return SearchFacets()
+    table = _connect(database_path()).open_table(TABLE_NAME)
+    rows = table.search().select(
+        ["tags", "language", "sender", "recipient", "delivery"]
+    ).limit(10_000).to_list()
+    return SearchFacets(
+        tags=tuple(sorted({tag for row in rows for tag in row["tags"]}, key=str.casefold)),
+        languages=tuple(sorted({row["language"] for row in rows})),
+        senders=tuple(sorted({row["sender"] for row in rows}, key=str.casefold)),
+        recipients=tuple(sorted({row["recipient"] for row in rows}, key=str.casefold)),
+        deliveries=tuple(sorted({row["delivery"] for row in rows})),
+    )

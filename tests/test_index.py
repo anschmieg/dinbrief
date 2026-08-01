@@ -5,11 +5,20 @@ import pytest
 from dinbrief import index
 
 
-def _letter(subject: str, body: str, tags: list[str] | None = None) -> str:
+def _letter(
+    subject: str,
+    body: str,
+    tags: list[str] | None = None,
+    *,
+    date: str = "2026-08-01",
+    recipient: str = "Finanzamt Köln",
+    language: str = "de-DE",
+    delivery: str = "both",
+) -> str:
     rendered_tags = "\n".join(f"  - {tag}" for tag in (tags or []))
     return f"""---
 format: dinbrief/v1
-language: de-DE
+language: {language}
 sender:
   name: Erika Mustermann
   address:
@@ -17,17 +26,19 @@ sender:
     postal_code: "12345"
     city: Berlin
 recipient:
-  organization: Finanzamt Köln
+  organization: {recipient}
   address:
     street: Amtsweg 2
     postal_code: "50667"
     city: Köln
-date: 2026-08-01
+date: {date}
 subject: {subject}
 salutation: Sehr geehrte Damen und Herren,
 closing: Mit freundlichen Grüßen
 tags:
 {rendered_tags}
+delivery:
+  method: {delivery}
 ---
 
 {body}
@@ -73,3 +84,67 @@ def test_missing_optional_package_has_actionable_error(monkeypatch: object) -> N
 
     with pytest.raises(index.SearchUnavailableError, match=r"dinbrief\[search\]"):
         index.query_index("example")
+
+
+@pytest.mark.skipif(not index.search_available(), reason="optional search extra is not installed")
+def test_filters_and_sorting(tmp_path: Path, monkeypatch: object) -> None:
+    database = tmp_path / "search-v2.lance"
+    monkeypatch.setattr(index, "database_path", lambda: database)  # type: ignore[attr-defined]
+    german = tmp_path / "tax" / "german.letter.md"
+    english = tmp_path / "contracts" / "english.letter.md"
+    german.parent.mkdir()
+    english.parent.mkdir()
+    german.write_text(
+        _letter(
+            "Tax matter",
+            "Please review this matter.",
+            ["tax"],
+            date="2025-01-02",
+            delivery="print",
+        ),
+        encoding="utf-8",
+    )
+    english.write_text(
+        _letter(
+            "Contract matter",
+            "Please review this matter.",
+            ["contract"],
+            date="2026-03-04",
+            recipient="Jane Example",
+            language="en-GB",
+            delivery="email",
+        ),
+        encoding="utf-8",
+    )
+    index.rebuild_index([tmp_path])
+
+    facets = index.index_facets()
+    assert facets.tags == ("contract", "tax")
+    assert facets.languages == ("de-DE", "en-GB")
+    assert facets.deliveries == ("email", "print")
+
+    assert [
+        item.path for item in index.query_index("matter", sort=index.SearchSort.DATE_DESC)
+    ] == [
+        english,
+        german,
+    ]
+    assert [
+        item.path
+        for item in index.query_index(
+            "matter", filters=index.SearchFilters(tag="contract", language="en-GB")
+        )
+    ] == [english]
+    assert [
+        item.path
+        for item in index.query_index(
+            "matter",
+            filters=index.SearchFilters(
+                recipient="jane",
+                delivery="email",
+                date_from="2026-01-01",
+                date_to="2026-12-31",
+                folder="contracts",
+            ),
+        )
+    ] == [english]

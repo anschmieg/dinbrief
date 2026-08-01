@@ -50,6 +50,9 @@ field overrides the sender city in the localized date line, for example
 - `dinbrief list --tag contract`
 - `dinbrief search termination`
 - `dinbrief search --refresh termination`
+- `dinbrief search termination --tag contract --sort date-desc`
+- `dinbrief search --interactive`
+- `dinbrief shell`
 - `dinbrief index`
 - `dinbrief setup search --enable`
 - `dinbrief setup search --disable`
@@ -59,6 +62,12 @@ field overrides the sender city in the localized date line, for example
 ISO date range. When installed and enabled, `search` uses a rebuildable LanceDB full-text index
 with BM25 ranking and typo tolerance. Source files are never moved, copied or linked. The index
 schema deliberately leaves room for an optional vector column and hybrid semantic search later.
+
+Run `dinbrief search` without a query, use `--interactive`, or open `dinbrief shell` for styled
+inline prompts with autocomplete and selectable filters. Scripts can use the equivalent flags:
+`--tag`, `--language`, `--sender`, `--recipient`, `--delivery`, `--date-from`, `--date-to`, and
+`--folder`. Sort with `--sort relevance|date-desc|date-asc|recipient|subject|path`; control typo
+tolerance with `--fuzziness 0|1|2`.
 
 ## Configuration
 

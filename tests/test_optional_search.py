@@ -2,9 +2,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+import typer
 from typer.testing import CliRunner
 
 from dinbrief import cli, config
+from dinbrief.index import SearchFilters
 
 runner = CliRunner()
 
@@ -46,3 +49,12 @@ def test_setup_search_can_enable_and_disable(tmp_path: Path, monkeypatch: object
     disabled = runner.invoke(cli.app, ["setup", "search", "--disable"])
     assert disabled.exit_code == 0
     assert config.search_enabled() is False
+
+
+def test_search_filter_validation() -> None:
+    with pytest.raises(typer.BadParameter, match="date-from"):
+        cli._validate_search_filters(
+            SearchFilters(date_from="2026-08-02", date_to="2026-08-01")
+        )
+    with pytest.raises(typer.BadParameter, match="delivery"):
+        cli._validate_search_filters(SearchFilters(delivery="carrier-pigeon"))
