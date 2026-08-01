@@ -2,6 +2,15 @@
 
 All notable changes to dinbrief are recorded here.
 
+## 0.5.0 — 2026-08-01
+
+- Add styled inline interaction with Questionary and prompt-toolkit.
+- Add an interactive search builder with autocomplete and selectable filters.
+- Add exact filters for tag, language, sender, recipient, delivery, date range and folder.
+- Add relevance, date, recipient, subject and path sorting.
+- Add a reusable interactive shell for common letter actions.
+- Keep every interactive operation available as a non-interactive CLI command or option.
+
 ## 0.4.0 — 2026-08-01
 
 - Replace the provisional SQLite search implementation with optional embedded LanceDB search.
