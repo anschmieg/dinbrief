@@ -7,6 +7,7 @@ function document(text, fileName = "/tmp/example.letter.md") {
   const lines = text.split("\n");
   return {
     fileName,
+    lineCount: lines.length,
     uri: { scheme: "file", toString: () => `file://${fileName}` },
     getText(range) {
       if (!range) return text;
@@ -21,7 +22,7 @@ function document(text, fileName = "/tmp/example.letter.md") {
 }
 
 test("frontmatter detection stops after the closing delimiter", () => {
-  const source = "---\nformat: dinbrief/v1\nrecipient:\n  name: Example\n---\nBody";
+  const source = "---\nformat: dinbrief/v2\nrecipient:\n  name: Example\n---\nBody";
   const doc = document(source);
 
   assert.equal(_test.inFrontmatter(doc, { line: 2, character: 3 }), true);
@@ -49,23 +50,56 @@ test("only the newest response may update diagnostics", () => {
   assert.equal(_test.responseIsCurrent(10, 9), false);
 });
 
-test("markdownlint profile is inserted after frontmatter exactly once", () => {
-  const source = "---\nformat: dinbrief/v1\n---\n\nBody\n";
-  const doc = document(source);
-  const insertion = _test.markdownlintInsertion(doc);
+test("subject quick fix promotes the first content line", () => {
+  const source = "---\n# YAML comment\nformat: dinbrief/v2\n---\n\nSubject\n\nBody\n";
+  const insertion = _test.subjectHeadingEdit(document(source));
 
-  assert.deepEqual(insertion.position, { line: 2, character: 3 });
-  assert.match(insertion.text, /markdownlint-disable-file MD013 MD041/);
-
-  const offset = source.indexOf("\n", source.indexOf("format:"));
-  const closingOffset = source.indexOf("\n", offset + 1);
-  const configured = source.slice(0, closingOffset) + insertion.text + source.slice(closingOffset);
-  assert.equal(_test.markdownlintInsertion(document(configured)), undefined);
+  assert.deepEqual(insertion.position, { line: 5, character: 0 });
+  assert.equal(insertion.text, "# ");
 });
 
-test("markdownlint profile insertion supports CRLF frontmatter", () => {
-  const source = "---\r\nformat: dinbrief/v1\r\n---\r\n\r\nBody\r\n";
-  const insertion = _test.markdownlintInsertion(document(source));
+test("subject quick fix supports empty CRLF documents", () => {
+  const source = "---\r\nformat: dinbrief/v2\r\n---\r\n";
+  const insertion = _test.subjectHeadingEdit(document(source));
 
-  assert.deepEqual(insertion.position, { line: 2, character: 3 });
+  assert.equal(insertion.text, "\r\n# Subject\r\n");
+});
+
+test("nested schema diagnostics point to the exact field or its parent", () => {
+  const source = "---\nformat: dinbrief/v2\nrecipient:\n  address:\n    city: Berlin\n---\n# Subject\n";
+  const doc = document(source);
+
+  assert.equal(_test.lineForField(doc, "recipient.address.city"), 4);
+  assert.equal(_test.lineForField(doc, "recipient.address.postal_code"), 3);
+  assert.equal(_test.lineForField(doc, "subject"), 6);
+});
+
+test("missing nested fields get a targeted quick fix", () => {
+  const source = "---\nformat: dinbrief/v2\nrecipient:\n  address:\n    city: Berlin\n---\n# Subject\n";
+  const diagnostic = {
+    source: "dinbrief",
+    code: "field-missing",
+    message: "Required field `recipient.address.postal_code` is missing."
+  };
+
+  const [action] = _test.missingFieldAction(document(source), diagnostic);
+
+  assert.equal(action.title, "Add required field recipient.address.postal_code");
+  assert.equal(action.edit.insertions[0].position.line, 3);
+  assert.equal(action.edit.insertions[0].position.character, 10);
+  assert.equal(action.edit.insertions[0].text, "\n    postal_code: TODO");
+});
+
+test("missing top-level fields get a targeted quick fix", () => {
+  const source = "---\nformat: dinbrief/v2\n---\n# Subject\n";
+  const diagnostic = {
+    source: "dinbrief",
+    code: "field-missing",
+    message: "Required field `sender` is missing."
+  };
+
+  const [action] = _test.missingFieldAction(document(source), diagnostic);
+
+  assert.equal(action.title, "Add required field sender");
+  assert.equal(action.edit.insertions[0].text, "\nsender:\n  TODO");
 });

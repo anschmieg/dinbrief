@@ -33,7 +33,7 @@ from .index import (
     search_available,
 )
 from .model import Party
-from .parser import MARKDOWNLINT_DIRECTIVE, LetterParseError, parse_file, parse_text
+from .parser import LetterParseError, parse_file, parse_text
 from .render import render_pdf, render_preview
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
@@ -437,8 +437,10 @@ def new(
 def _sample(language: str) -> str:
     salutation = "Sehr geehrte Damen und Herren," if language.startswith("de") else "Dear Sir or Madam,"
     closing = "Mit freundlichen Grüßen" if language.startswith("de") else "Yours faithfully,"
+    subject = "Betreff" if language.startswith("de") else "Subject"
+    body = "Schreiben Sie hier Ihren Brief." if language.startswith("de") else "Write your letter here."
     return f'''---
-format: dinbrief/v1
+format: dinbrief/v2
 language: {language}
 sender:
   name: Your Name
@@ -455,15 +457,14 @@ recipient:
     city: Recipient City
     country: DE
 date: {time.strftime("%Y-%m-%d")}
-subject: Subject
 salutation: {salutation}
 closing: {closing}
 tags: []
 ---
 
-{MARKDOWNLINT_DIRECTIVE}
+# {subject}
 
-Write your letter here.
+{body}
 '''
 
 
@@ -614,9 +615,25 @@ def validate_json() -> None:
     try:
         parsed = parse_text(payload["text"])
         result = {"diagnostics": [item.__dict__ for item in heuristic_diagnostics(parsed)]}
-    except (LetterParseError, KeyError) as exc:
-        result = {"diagnostics": [{"severity": "error", "code": "parse", "message": str(exc)}]}
+    except LetterParseError as exc:
+        result = {"diagnostics": _parse_error_diagnostics(exc)}
+    except KeyError as exc:
+        result = {"diagnostics": [{"severity": "error", "code": "protocol", "message": f"Missing request property: {exc}"}]}
     json.dump(result, sys.stdout)
+
+
+def _parse_error_diagnostics(exc: LetterParseError) -> list[dict[str, Any]]:
+    diagnostics: list[dict[str, Any]] = []
+    for issue in exc.issues:
+        item: dict[str, Any] = {"severity": "error", "code": issue.code, "message": issue.message}
+        if issue.field:
+            item["field"] = issue.field
+        if issue.line is not None:
+            item["line"] = issue.line
+        if issue.column is not None:
+            item["column"] = issue.column
+        diagnostics.append(item)
+    return diagnostics
 
 
 def _editor_response(payload: dict[str, Any]) -> dict[str, Any]:
@@ -638,8 +655,10 @@ def _editor_response(payload: dict[str, Any]) -> dict[str, Any]:
             response["preview"] = str(preview)
             response["pdf"] = str(target)
         return response
+    except LetterParseError as exc:
+        return {"id": payload.get("id"), "diagnostics": _parse_error_diagnostics(exc)}
     except Exception as exc:
-        return {"id": payload.get("id"), "diagnostics": [{"severity": "error", "code": "parse", "message": str(exc)}]}
+        return {"id": payload.get("id"), "diagnostics": [{"severity": "error", "code": "internal", "message": f"Internal dinbrief error: {exc}"}]}
 
 
 @app.command("serve")

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from dinbrief.parser import MARKDOWNLINT_DIRECTIVE, LetterParseError, parse_file, parse_text
+from dinbrief.parser import LetterParseError, parse_file, parse_text
 
 ROOT = Path(__file__).parents[1]
 
@@ -10,20 +10,20 @@ ROOT = Path(__file__).parents[1]
 @pytest.mark.parametrize("language", ["de", "en"])
 def test_examples_parse(language: str) -> None:
     letter = parse_file(ROOT / "examples" / language / "example.letter.md")
-    assert letter.metadata.format == "dinbrief/v1"
+    assert letter.metadata.format == "dinbrief/v2"
     assert letter.body
-    assert MARKDOWNLINT_DIRECTIVE not in letter.body
 
 
-def test_letter_markdownlint_profile_is_not_part_of_rendered_body() -> None:
+def test_subject_heading_is_extracted_from_rendered_body() -> None:
     source = (ROOT / "examples" / "de" / "example.letter.md").read_text(encoding="utf-8")
     parsed = parse_text(source)
 
-    assert parsed.body.startswith("hiermit kündige")
+    assert parsed.metadata.subject == "Kündigung meines Vertrags 12345"
+    assert parsed.body.startswith("Hiermit kündige")
 
 
 def test_rejects_missing_frontmatter() -> None:
-    with pytest.raises(LetterParseError, match="Missing YAML frontmatter"):
+    with pytest.raises(LetterParseError, match="Add YAML frontmatter"):
         parse_text("Just text")
 
 
@@ -44,7 +44,31 @@ def test_rejects_unknown_frontmatter_fields_instead_of_ignoring_typos() -> None:
     text = (ROOT / "examples" / "de" / "example.letter.md").read_text(encoding="utf-8")
 
     with pytest.raises(LetterParseError, match="subject_typo"):
-        parse_text(text.replace("subject:", "subject_typo:"))
+        parse_text(text.replace("date:", "subject_typo:"))
+
+
+def test_rejects_subject_in_frontmatter() -> None:
+    text = (ROOT / "examples" / "de" / "example.letter.md").read_text(encoding="utf-8")
+
+    with pytest.raises(LetterParseError, match="Unknown field `subject`"):
+        parse_text(text.replace("date:", "subject: Falsch\ndate:"))
+
+
+def test_requires_exactly_one_subject_heading() -> None:
+    text = (ROOT / "examples" / "de" / "example.letter.md").read_text(encoding="utf-8")
+
+    with pytest.raises(LetterParseError, match="first content line"):
+        parse_text(text.replace("# Kündigung", "Kündigung"))
+    with pytest.raises(LetterParseError, match="exactly one"):
+        parse_text(text.replace("Hiermit kündige", "# Zweiter Betreff\n\nHiermit kündige"))
+
+
+def test_subject_heading_uses_plain_text_from_inline_markdown() -> None:
+    text = (ROOT / "examples" / "de" / "example.letter.md").read_text(encoding="utf-8")
+
+    parsed = parse_text(text.replace("# Kündigung meines Vertrags 12345", "# **Kündigung** von `12345`"))
+
+    assert parsed.metadata.subject == "Kündigung von 12345"
 
 
 def test_rejects_unknown_nested_layout_fields() -> None:

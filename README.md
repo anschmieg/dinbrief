@@ -5,7 +5,8 @@
 ## Start writing now
 
 Copy [`examples/de/example.letter.md`](examples/de/example.letter.md), keep the YAML
-frontmatter between the `---` lines, and write the letter body as normal Markdown.
+frontmatter between the `---` lines, write the subject as the first level-one heading, and
+continue with the letter body as normal Markdown.
 
 ```bash
 uv tool install .
@@ -77,16 +78,16 @@ JSON workspace files. It refuses malformed or JSONC files instead of overwriting
 those files to standard JSON or add the documented tasks manually. The update is transactional,
 so a validation error leaves every existing workspace file unchanged.
 
-The source body supports CommonMark paragraphs, emphasis, strong text, links, inline and block
-code, headings, block quotes, horizontal rules, and nested ordered or unordered lists. Unknown
-frontmatter fields are errors rather than being silently ignored, which catches misspellings in
-layout and address fields early.
+The subject is the first and only level-one heading (`# Subject`) and is not repeated in YAML.
+The remaining source body supports CommonMark paragraphs, emphasis, strong text, links, inline
+and block code, lower-level headings, block quotes, horizontal rules, and nested ordered or
+unordered lists. Unknown frontmatter fields are errors rather than being silently ignored, which
+catches misspellings in layout and address fields early.
 
-Letters remain in VS Code's standard Markdown language mode so Markdown highlighting, links, and
-editor commands continue to work. New letters contain a file-local Markdownlint directive that
-disables only `MD013` (line length) and `MD041` (first heading), because both rules are unsuitable
-for prose letters. Existing files can add it through **DIN-Brief: Markdownlint für Brief
-konfigurieren** or the corresponding Quick Fix. Other useful Markdown rules remain active.
+Letters remain in VS Code's standard Markdown language mode, so highlighting, links, Outline,
+Markdownlint, and editor commands work without file-local exceptions. The dinbrief extension
+reports missing, unknown, and invalid YAML fields at the closest relevant line. It also validates
+the subject heading and offers quick fixes for missing fields and a missing H1.
 
 ## Configuration
 

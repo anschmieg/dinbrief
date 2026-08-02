@@ -12,10 +12,10 @@ VS Code process tasks, so paths work consistently on macOS, Windows, and Linux.
 Configure `dinbrief.executable` if `dinbrief` is not on VS Code's PATH. Service failures appear in
 the **dinbrief** output channel and as editor diagnostics.
 
-`*.letter.md` deliberately remains standard Markdown. The command **DIN-Brief: Markdownlint für
-Brief konfigurieren** adds a file-local directive that disables only line-length (`MD013`) and
-first-heading (`MD041`) checks. It does not change Markdownlint behavior for other files; useful
-rules such as the final-newline check remain enabled.
+`*.letter.md` deliberately remains standard Markdown. Its first and only level-one heading is the
+printed subject, so standard Markdown tools work without file-local lint exceptions. Schema
+diagnostics point to the relevant nested YAML field or subject heading. Quick fixes can add
+missing required metadata and promote the first content line to the subject heading.
 
 For development, open this directory in VS Code and run the extension host. Packaging can be
 done with `npx @vscode/vsce package`.

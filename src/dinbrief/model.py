@@ -57,13 +57,13 @@ class Delivery(StrictModel):
 
 
 class Letter(StrictModel):
-    format: Literal["dinbrief/v1"] = "dinbrief/v1"
+    format: Literal["dinbrief/v2"] = "dinbrief/v2"
     language: str = Field(default="de-DE", pattern=r"^[a-z]{2}(?:-[A-Z]{2})?$")
     sender: str | Party
     recipient: Party
     date: date
     location: str | None = None
-    subject: str = Field(min_length=1)
+    subject: str = Field(min_length=1, exclude=True)
     salutation: str = Field(min_length=1)
     closing: str = Field(min_length=1)
     references: dict[str, str] = Field(default_factory=dict)

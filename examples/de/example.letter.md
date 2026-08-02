@@ -1,5 +1,5 @@
 ---
-format: dinbrief/v1
+format: dinbrief/v2
 language: de-DE
 sender:
   name: Max Mustermann
@@ -19,7 +19,6 @@ recipient:
     city: Beispielstadt
     country: DE
 date: 2026-08-01
-subject: Kündigung meines Vertrags 12345
 salutation: Sehr geehrte Frau Beispiel,
 closing: Mit freundlichen Grüßen
 references:
@@ -31,8 +30,8 @@ attachments:
   - Vertragskopie
 ---
 
-<!-- markdownlint-disable-file MD013 MD041 -->
+# Kündigung meines Vertrags 12345
 
-hiermit kündige ich meinen Vertrag zum nächstmöglichen Zeitpunkt.
+Hiermit kündige ich meinen Vertrag zum nächstmöglichen Zeitpunkt.
 
 Bitte bestätigen Sie mir den Beendigungszeitpunkt schriftlich.

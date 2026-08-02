@@ -58,3 +58,46 @@ def test_editor_previews_are_isolated_per_document(
     assert first["preview"] != second["preview"]
     assert first["pdf"] != second["pdf"]
     assert len(set(outputs)) == 4
+
+
+def test_editor_returns_all_schema_errors_with_fields() -> None:
+    text = (ROOT / "examples" / "de" / "example.letter.md").read_text(encoding="utf-8")
+    text = text.replace("date: 2026-08-01\n", "unknown_field: value\n").replace(
+        '    postal_code: "54321"\n', ""
+    )
+
+    response = cli._editor_response({"id": 3, "uri": "file:///invalid.letter.md", "text": text})
+
+    diagnostics = response["diagnostics"]
+    assert {item["field"] for item in diagnostics} >= {
+        "unknown_field",
+        "date",
+        "recipient.address.postal_code",
+    }
+    assert {item["code"] for item in diagnostics} >= {"field-unknown", "field-missing"}
+
+
+def test_editor_reports_subject_and_schema_errors_together() -> None:
+    text = "---\nformat: dinbrief/v2\nrecipient:\n  organization: Example\n---\nBody without a heading\n"
+
+    response = cli._editor_response({"id": 5, "uri": "file:///invalid.letter.md", "text": text})
+
+    diagnostics = response["diagnostics"]
+    assert {item.get("field") for item in diagnostics} >= {
+        "subject",
+        "recipient.address",
+        "date",
+        "salutation",
+        "closing",
+    }
+
+
+def test_editor_reports_yaml_error_position() -> None:
+    text = "---\nformat: [\n---\n# Subject\n"
+
+    response = cli._editor_response({"id": 4, "uri": "file:///invalid.letter.md", "text": text})
+
+    diagnostic = response["diagnostics"][0]
+    assert diagnostic["code"] == "yaml-invalid"
+    assert diagnostic["line"] >= 1
+    assert diagnostic["column"] >= 0

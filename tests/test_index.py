@@ -17,7 +17,7 @@ def _letter(
 ) -> str:
     rendered_tags = "\n".join(f"  - {tag}" for tag in (tags or []))
     return f"""---
-format: dinbrief/v1
+format: dinbrief/v2
 language: {language}
 sender:
   name: Erika Mustermann
@@ -32,7 +32,6 @@ recipient:
     postal_code: "50667"
     city: Köln
 date: {date}
-subject: {subject}
 salutation: Sehr geehrte Damen und Herren,
 closing: Mit freundlichen Grüßen
 tags:
@@ -40,6 +39,8 @@ tags:
 delivery:
   method: {delivery}
 ---
+
+# {subject}
 
 {body}
 """

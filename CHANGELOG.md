@@ -2,6 +2,14 @@
 
 All notable changes to dinbrief are recorded here.
 
+## 0.6.0 — 2026-08-02
+
+- Use the first Markdown H1 as the letter subject instead of duplicating content in YAML.
+- Remove generated Markdownlint directives and their VS Code command.
+- Report all schema violations with concise messages and field-aware editor locations.
+- Add subject and missing-field Quick Fixes, including CRLF support.
+- Advance the source schema to `dinbrief/v2` for the intentional format change.
+
 ## 0.5.4 — 2026-08-02
 
 - Add a letter-local Markdownlint profile that disables only rules inappropriate for prose letters.

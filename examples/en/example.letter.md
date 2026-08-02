@@ -1,5 +1,5 @@
 ---
-format: dinbrief/v1
+format: dinbrief/v2
 language: en-GB
 sender:
   name: John Example
@@ -18,7 +18,6 @@ recipient:
     city: London
     country: GB
 date: 2026-08-01
-subject: Termination of contract 12345
 salutation: Dear Ms Example,
 closing: Yours sincerely,
 references:
@@ -28,7 +27,7 @@ delivery:
 tags: [contract, termination]
 ---
 
-<!-- markdownlint-disable-file MD013 MD041 -->
+# Termination of contract 12345
 
 I hereby terminate my contract at the earliest possible date.
 
