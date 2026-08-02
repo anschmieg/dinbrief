@@ -23,5 +23,11 @@ tmp/
 *.lance/
 *.sqlite3
 
+# Local domain-name research output.
+available-md-domains.txt
+registered-md-domains.txt
+unknown-md-domains.txt
+domain-whois-responses/
+
 vscode-extension/node_modules/
 vscode-extension/*.vsix
