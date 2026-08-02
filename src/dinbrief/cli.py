@@ -33,7 +33,7 @@ from .index import (
     search_available,
 )
 from .model import Party
-from .parser import LetterParseError, parse_file, parse_text
+from .parser import MARKDOWNLINT_DIRECTIVE, LetterParseError, parse_file, parse_text
 from .render import render_pdf, render_preview
 
 app = typer.Typer(no_args_is_help=True, pretty_exceptions_enable=False)
@@ -420,7 +420,10 @@ def _ensure_search_ready() -> None:
 
 
 @app.command("new")
-def new(path: Path = Path("new.letter.md"), language: str = "de-DE") -> None:
+def new(
+    path: Annotated[Path, typer.Argument()] = Path("new.letter.md"),
+    language: Annotated[str, typer.Option("--language", "-l")] = "de-DE",
+) -> None:
     """Create a minimal self-contained letter source."""
     path = path.expanduser()
     if path.exists():
@@ -457,6 +460,8 @@ salutation: {salutation}
 closing: {closing}
 tags: []
 ---
+
+{MARKDOWNLINT_DIRECTIVE}
 
 Write your letter here.
 '''

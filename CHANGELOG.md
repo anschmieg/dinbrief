@@ -2,6 +2,13 @@
 
 All notable changes to dinbrief are recorded here.
 
+## 0.5.4 — 2026-08-02
+
+- Add a letter-local Markdownlint profile that disables only rules inappropriate for prose letters.
+- Keep the standard Markdown language mode, syntax highlighting, links, and editor commands intact.
+- Add a VS Code quick fix and command for applying the profile to existing letters.
+- Exclude the configuration comment from rendered and indexed letter content.
+
 ## 0.5.3 — 2026-08-01
 
 - Keep search indexes automatically synchronized with added, changed, moved, and deleted letters.

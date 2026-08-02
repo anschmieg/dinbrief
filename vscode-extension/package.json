@@ -2,7 +2,7 @@
   "name": "dinbrief-vscode",
   "displayName": "dinbrief",
   "description": "Author and preview DIN 5008 *.letter.md files",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "publisher": "dinbrief",
   "engines": {
     "vscode": "^1.95.0"
@@ -33,6 +33,10 @@
       {
         "command": "dinbrief.preview",
         "title": "DIN-Brief: Vorschau öffnen"
+      },
+      {
+        "command": "dinbrief.configureMarkdownlint",
+        "title": "DIN-Brief: Markdownlint für Brief konfigurieren"
       }
     ],
     "keybindings": [

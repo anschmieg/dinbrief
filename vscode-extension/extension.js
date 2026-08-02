@@ -3,6 +3,8 @@ const { spawn } = require("child_process");
 const path = require("path");
 const schema = require("./letter.schema.json");
 
+const MARKDOWNLINT_DIRECTIVE = "<!-- markdownlint-disable-file MD013 MD041 -->";
+
 let service;
 let buffer = "";
 let sequence = 0;
@@ -271,6 +273,46 @@ function missingFieldAction(document) {
   return [action];
 }
 
+function markdownlintInsertion(document) {
+  const text = document.getText();
+  if (text.includes(MARKDOWNLINT_DIRECTIVE)) return undefined;
+  const frontmatter = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*/.exec(text);
+  if (!frontmatter) return undefined;
+  return {
+    position: document.positionAt(frontmatter[0].length),
+    text: `\n\n${MARKDOWNLINT_DIRECTIVE}`
+  };
+}
+
+function markdownlintAction(document) {
+  const insertion = markdownlintInsertion(document);
+  if (!insertion) return [];
+  const action = new vscode.CodeAction(
+    "Use letter-friendly Markdown lint rules",
+    vscode.CodeActionKind.QuickFix
+  );
+  action.edit = new vscode.WorkspaceEdit();
+  action.edit.insert(document.uri, insertion.position, insertion.text);
+  return [action];
+}
+
+function letterCodeActions(document) {
+  return [...missingFieldAction(document), ...markdownlintAction(document)];
+}
+
+async function configureMarkdownlint() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || !isLetter(editor.document)) return;
+  const insertion = markdownlintInsertion(editor.document);
+  if (!insertion) {
+    vscode.window.showInformationMessage("This letter already uses the letter-friendly Markdown lint profile.");
+    return;
+  }
+  const edit = new vscode.WorkspaceEdit();
+  edit.insert(editor.document.uri, insertion.position, insertion.text);
+  await vscode.workspace.applyEdit(edit);
+}
+
 function activate(context) {
   const selector = { language: "markdown", pattern: "**/*.letter.md" };
   const diagnostics = vscode.languages.createDiagnosticCollection("dinbrief");
@@ -301,10 +343,11 @@ function activate(context) {
         return description ? new vscode.Hover(description, range) : undefined;
       }
     }),
-    vscode.languages.registerCodeActionsProvider(selector, { provideCodeActions: missingFieldAction }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
+    vscode.languages.registerCodeActionsProvider(selector, { provideCodeActions: letterCodeActions }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
     vscode.commands.registerCommand("dinbrief.check", () => runTask("check")),
     vscode.commands.registerCommand("dinbrief.render", () => runTask("render")),
     vscode.commands.registerCommand("dinbrief.open", () => runTask("open")),
+    vscode.commands.registerCommand("dinbrief.configureMarkdownlint", configureMarkdownlint),
     vscode.commands.registerCommand("dinbrief.preview", () => showPreview(context))
   );
   vscode.workspace.textDocuments.forEach(document => schedule(diagnostics, status, document));
@@ -317,5 +360,5 @@ function deactivate() {
 module.exports = {
   activate,
   deactivate,
-  _test: { completionItems, inFrontmatter, responseIsCurrent, yamlPath }
+  _test: { completionItems, inFrontmatter, markdownlintInsertion, responseIsCurrent, yamlPath }
 };

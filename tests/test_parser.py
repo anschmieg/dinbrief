@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from dinbrief.parser import LetterParseError, parse_file, parse_text
+from dinbrief.parser import MARKDOWNLINT_DIRECTIVE, LetterParseError, parse_file, parse_text
 
 ROOT = Path(__file__).parents[1]
 
@@ -12,6 +12,14 @@ def test_examples_parse(language: str) -> None:
     letter = parse_file(ROOT / "examples" / language / "example.letter.md")
     assert letter.metadata.format == "dinbrief/v1"
     assert letter.body
+    assert MARKDOWNLINT_DIRECTIVE not in letter.body
+
+
+def test_letter_markdownlint_profile_is_not_part_of_rendered_body() -> None:
+    source = (ROOT / "examples" / "de" / "example.letter.md").read_text(encoding="utf-8")
+    parsed = parse_text(source)
+
+    assert parsed.body.startswith("hiermit kündige")
 
 
 def test_rejects_missing_frontmatter() -> None:

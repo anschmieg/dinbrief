@@ -31,7 +31,8 @@ attachments:
   - Vertragskopie
 ---
 
+<!-- markdownlint-disable-file MD013 MD041 -->
+
 hiermit kündige ich meinen Vertrag zum nächstmöglichen Zeitpunkt.
 
 Bitte bestätigen Sie mir den Beendigungszeitpunkt schriftlich.
-

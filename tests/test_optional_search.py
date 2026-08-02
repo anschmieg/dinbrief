@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 
 from dinbrief import cli, config
 from dinbrief.index import SearchFilters
+from dinbrief.parser import MARKDOWNLINT_DIRECTIVE, parse_text
 
 runner = CliRunner()
 
@@ -17,6 +18,17 @@ def test_cli_reports_installed_version() -> None:
 
     assert result.exit_code == 0
     assert result.stdout.startswith("dinbrief 0.5.")
+
+
+def test_new_letter_has_local_markdownlint_profile(tmp_path: Path) -> None:
+    target = tmp_path / "new.letter.md"
+
+    result = runner.invoke(cli.app, ["new", str(target)])
+
+    assert result.exit_code == 0
+    source = target.read_text(encoding="utf-8")
+    assert MARKDOWNLINT_DIRECTIVE in source
+    assert MARKDOWNLINT_DIRECTIVE not in parse_text(source).body
 
 
 def test_core_cli_does_not_import_optional_engine() -> None:

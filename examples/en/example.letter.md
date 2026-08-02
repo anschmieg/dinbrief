@@ -28,7 +28,8 @@ delivery:
 tags: [contract, termination]
 ---
 
+<!-- markdownlint-disable-file MD013 MD041 -->
+
 I hereby terminate my contract at the earliest possible date.
 
 Please confirm the effective termination date in writing.
-

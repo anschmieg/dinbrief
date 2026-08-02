@@ -82,6 +82,12 @@ code, headings, block quotes, horizontal rules, and nested ordered or unordered 
 frontmatter fields are errors rather than being silently ignored, which catches misspellings in
 layout and address fields early.
 
+Letters remain in VS Code's standard Markdown language mode so Markdown highlighting, links, and
+editor commands continue to work. New letters contain a file-local Markdownlint directive that
+disables only `MD013` (line length) and `MD041` (first heading), because both rules are unsuitable
+for prose letters. Existing files can add it through **DIN-Brief: Markdownlint für Brief
+konfigurieren** or the corresponding Quick Fix. Other useful Markdown rules remain active.
+
 ## Configuration
 
 The optional user configuration is `config.toml` in the platform configuration directory
