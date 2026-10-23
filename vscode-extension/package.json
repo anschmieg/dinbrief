@@ -2,7 +2,7 @@
   "name": "dinbrief-vscode",
   "displayName": "dinbrief",
   "description": "Author and preview DIN 5008 *.letter.md files",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "dinbrief",
   "engines": {
     "vscode": "^1.95.0"

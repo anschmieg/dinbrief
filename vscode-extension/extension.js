@@ -8,6 +8,7 @@ let buffer = "";
 let sequence = 0;
 let previewPanel;
 let lastPreview;
+let previewDocumentUri;
 let output;
 const pending = new Map();
 const timers = new Map();
@@ -183,21 +184,47 @@ function schedule(collection, status, document) {
   }, delay));
 }
 
-function runTask(command) {
+async function commandDocument() {
   const editor = vscode.window.activeTextEditor;
-  if (!editor || !isLetter(editor.document)) return;
-  const executable = vscode.workspace.getConfiguration("dinbrief").get("executable", "dinbrief");
-  const execution = new vscode.ProcessExecution(executable, [command, editor.document.fileName]);
-  const definition = { type: "dinbrief", command };
-  const scope = vscode.workspace.getWorkspaceFolder(editor.document.uri) || vscode.TaskScope.Global;
-  const task = new vscode.Task(
-    definition,
-    scope,
-    `DIN-Brief: ${command}`,
-    "dinbrief",
-    execution
-  );
-  vscode.tasks.executeTask(task);
+  if (editor && isLetter(editor.document)) return editor.document;
+  const letters = vscode.workspace.textDocuments.filter(isLetter);
+  if (previewPanel?.active && previewDocumentUri) {
+    const document = letters.find(item => item.uri.toString() === previewDocumentUri);
+    if (document) return document;
+  }
+  if (letters.length === 1) return letters[0];
+  if (letters.length > 1) {
+    const selected = await vscode.window.showQuickPick(
+      letters.map(document => ({ label: path.basename(document.fileName), description: document.fileName, document })),
+      { placeHolder: "Select the letter to use" }
+    );
+    return selected?.document;
+  }
+  vscode.window.showInformationMessage("Open a .letter.md file first.");
+}
+
+async function runTask(command, launch = spawn) {
+  try {
+    const document = await commandDocument();
+    if (!document) return;
+    if (document.isDirty && !await document.save()) {
+      vscode.window.showErrorMessage("dinbrief: Save the letter before running this command.");
+      return;
+    }
+    const executable = vscode.workspace.getConfiguration("dinbrief").get("executable", "dinbrief");
+    output.appendLine(`${executable} ${command}: ${document.fileName}`);
+    await new Promise((resolve, reject) => {
+      const child = launch(executable, [command, document.fileName], { cwd: path.dirname(document.fileName) });
+      child.stdout.on("data", chunk => output.append(chunk.toString()));
+      child.stderr.on("data", chunk => output.append(chunk.toString()));
+      child.on("error", reject);
+      child.on("close", code => code === 0 ? resolve() : reject(new Error(`CLI exited with code ${code}. See the dinbrief output for details.`)));
+    });
+    vscode.window.showInformationMessage(command === "check" ? "dinbrief: Check completed." : "dinbrief: PDF created.");
+  } catch (error) {
+    output.show(true);
+    vscode.window.showErrorMessage(`dinbrief: ${error.message}`);
+  }
 }
 
 function inFrontmatter(document, position) {
@@ -276,7 +303,10 @@ async function showPreview(context) {
   if (editor && isLetter(editor.document)) {
     try {
       const response = await request(editor.document, true);
-      if (isCurrent(editor.document, response) && response.preview) lastPreview = response.preview;
+      if (isCurrent(editor.document, response) && response.preview) {
+        lastPreview = response.preview;
+        previewDocumentUri = editor.document.uri.toString();
+      }
     } catch (error) {
       vscode.window.showErrorMessage(`dinbrief preview: ${error.message}`);
       return;
@@ -384,7 +414,7 @@ function activate(context) {
         return description ? new vscode.Hover(description, range) : undefined;
       }
     }),
-    vscode.languages.registerCodeActionsProvider(selector, { provideCodeActions: letterCodeActions }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
+    vscode.languages.registerCodeActionsProvider(selector, { provideCodeActions(document, range, context) { return letterCodeActions(document, context); } }, { providedCodeActionKinds: [vscode.CodeActionKind.QuickFix] }),
     vscode.commands.registerCommand("dinbrief.check", () => runTask("check")),
     vscode.commands.registerCommand("dinbrief.render", () => runTask("render")),
     vscode.commands.registerCommand("dinbrief.open", () => runTask("open")),
@@ -400,5 +430,5 @@ function deactivate() {
 module.exports = {
   activate,
   deactivate,
-  _test: { completionItems, inFrontmatter, lineForField, missingFieldAction, responseIsCurrent, subjectHeadingEdit, yamlPath }
+  _test: { completionItems, inFrontmatter, lineForField, missingFieldAction, responseIsCurrent, subjectHeadingEdit, yamlPath, commandDocument, runTask, setOutput(channel) { output = channel; } }
 };

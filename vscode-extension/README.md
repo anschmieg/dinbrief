@@ -6,8 +6,10 @@ CLI first. During typing, inexpensive heuristics run immediately and an exact in
 layout pass updates diagnostics and the preview after the configured debounce.
 
 The service starts only when a letter is opened. Requests time out cleanly, stale responses cannot
-overwrite newer diagnostics, and each open document uses an isolated preview. CLI commands run as
-VS Code process tasks, so paths work consistently on macOS, Windows, and Linux.
+overwrite newer diagnostics, and each open document uses an isolated preview. CLI commands save
+pending edits and launch the configured executable directly, including when a standalone letter
+is open without a workspace folder or the preview has focus. CLI failures appear as notifications
+with details in the dinbrief output channel.
 
 Configure `dinbrief.executable` if `dinbrief` is not on VS Code's PATH. Service failures appear in
 the **dinbrief** output channel and as editor diagnostics.
