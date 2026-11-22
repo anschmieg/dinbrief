@@ -1,0 +1,20 @@
+{
+  "id": "dinbrief.letter",
+  "name": "DIN Letter",
+  "version": "0.1.0",
+  "engines": { "typora": ">=2.0.0-beta1" },
+  "description": "Validate DIN 5008 letter drafts with dinbrief.",
+  "tags": ["Detail View", "Writing"],
+  "author": "dinbrief contributors",
+  "repository": "https://github.com/anschmieg/dinbrief",
+  "permissions": { "document": "read", "process": ["dinbrief"] },
+  "contributes": {
+    "detailViews": [{ "id": "letter", "title": "DIN Letter", "icon": "list-checks", "sfSymbol": "checklist", "entry": "index.html" }],
+    "configuration": {
+      "title": "DIN Letter",
+      "properties": {
+        "executable": { "type": "string", "default": "dinbrief", "title": "dinbrief executable", "description": "Command name or full path to the dinbrief executable with the LSP extra installed." }
+      }
+    }
+  }
+}

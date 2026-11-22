@@ -104,6 +104,9 @@ for its schema documentation. Your editor's Quick Fix menu can add missing field
 unambiguous misspellings, and repair subject headings. Review any inserted placeholder before
 rendering. An editor needs an LSP client to show these features.
 
+Typora 2 Beta can use the [DIN Letter extension](typora-extension/) to show live diagnostics
+in its detail panel.
+
 ## Configuration
 
 The optional user configuration is `config.toml` in the platform configuration directory

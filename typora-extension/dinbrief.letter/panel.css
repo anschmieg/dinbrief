@@ -1,0 +1,23 @@
+body {
+  margin: 12px;
+  color: var(--typora-foreground, CanvasText);
+  font: var(--typora-font-size, 14px) var(--typora-font, system-ui);
+}
+
+#issues { padding: 0; list-style: none; }
+#issues li + li { margin-top: 6px; }
+
+button {
+  padding: 8px;
+  border: 1px solid var(--typora-border, GrayText);
+  border-radius: 5px;
+  background: var(--typora-panel, Canvas);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:focus-visible { outline: 2px solid var(--typora-accent, Highlight); }
+#issues button, .issue { display: block; box-sizing: border-box; width: 100%; text-align: start; }
+.issue { overflow-wrap: anywhere; }
+.severity { display: block; font-weight: 600; margin-bottom: 3px; }
