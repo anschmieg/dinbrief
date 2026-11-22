@@ -1,5 +1,6 @@
 import subprocess
 import sys
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,7 @@ def test_cli_reports_installed_version() -> None:
     result = runner.invoke(cli.app, ["--version"])
 
     assert result.exit_code == 0
-    assert result.stdout.startswith("dinbrief 0.5.")
+    assert result.stdout == f"dinbrief {version('dinbrief')}\n"
 
 
 def test_new_letter_uses_subject_heading(tmp_path: Path) -> None:
