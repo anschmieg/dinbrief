@@ -89,6 +89,21 @@ Markdownlint, and editor commands work without file-local exceptions. The dinbri
 reports missing, unknown, and invalid YAML fields at the closest relevant line. It also validates
 the subject heading and offers quick fixes for missing fields and a missing H1.
 
+## Language server
+
+Install the optional editor dependencies with `uv tool install '.[lsp]'` from this checkout.
+Configure your editor's LSP client to launch `dinbrief lsp` over stdio for Markdown.
+The server handles `*.letter.md` documents. It checks unsaved edits for YAML syntax errors,
+duplicate or unknown keys, missing metadata, invalid values, and subject heading problems.
+Validation uses your dinbrief configuration, including sender profiles and defaults. Layout
+warnings are estimates. Use `dinbrief render` to compile and check the actual PDF.
+
+Press your editor's completion shortcut in the frontmatter for schema fields, allowed values,
+and configured sender IDs. Field-name completion works in block-style YAML. Hover over a field
+for its schema documentation. Your editor's Quick Fix menu can add missing fields, correct
+unambiguous misspellings, and repair subject headings. Review any inserted placeholder before
+rendering. An editor needs an LSP client to show these features.
+
 ## Configuration
 
 The optional user configuration is `config.toml` in the platform configuration directory

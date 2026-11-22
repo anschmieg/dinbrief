@@ -52,14 +52,33 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
     return result
 
 
+class ConfigError(ValueError):
+    """The dinbrief configuration has an invalid structure."""
+
+
+class UnknownSenderProfileError(ValueError):
+    """A letter names a sender profile that is absent from the configuration."""
+
+    def __init__(self, sender: str, metadata: dict[str, Any]) -> None:
+        super().__init__(f"Unknown sender profile: {sender}")
+        self.metadata = metadata
+
+
 def effective_metadata(raw: dict[str, Any]) -> dict[str, Any]:
     config = load_config()
     defaults = config.get("defaults", {})
+    if not isinstance(defaults, dict):
+        raise ConfigError("`defaults` must be a TOML table.")
     merged = deep_merge(defaults, raw)
     sender = merged.get("sender")
     if isinstance(sender, str):
         profiles = config.get("senders", {})
+        if not isinstance(profiles, dict):
+            raise ConfigError("`senders` must be a TOML table.")
         if sender not in profiles:
-            raise ValueError(f"Unknown sender profile: {sender}")
-        merged["sender"] = profiles[sender]
+            raise UnknownSenderProfileError(sender, merged)
+        profile = profiles[sender]
+        if not isinstance(profile, dict):
+            raise ConfigError(f"Sender profile `{sender}` must be a TOML table.")
+        merged["sender"] = profile
     return merged

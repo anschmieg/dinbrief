@@ -676,5 +676,20 @@ def serve(stdio: bool = typer.Option(False, "--stdio")) -> None:
         sys.stdout.flush()
 
 
+@app.command("lsp")
+def lsp() -> None:
+    """Run the dinbrief language server over standard input and output."""
+    try:
+        from .lsp import create_server
+    except ModuleNotFoundError as exc:
+        if exc.name not in {"pygls", "lsprotocol"}:
+            raise
+        typer.echo("Install dinbrief[lsp] to use the language server.", err=True)
+        raise typer.Exit(1) from exc
+
+    data = _resource_text("schemas/letter.schema.json", Path("schemas/letter.schema.json"))
+    create_server(json.loads(data)).start_io()
+
+
 if __name__ == "__main__":
     app()

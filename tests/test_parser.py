@@ -105,3 +105,21 @@ def test_configured_sender_default_is_applied_before_validation(
     parsed = parse_text(text)
 
     assert parsed.metadata.sender.display_name == "Configured Sender"  # type: ignore[union-attr]
+
+
+def test_unknown_sender_does_not_hide_other_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("dinbrief.config.load_config", lambda: {"defaults": {"closing": "Thanks"}})
+    with pytest.raises(LetterParseError) as error:
+        parse_text("---\nsender: missing\nlayout: {form: X}\n---\n# Subject\n")
+    issues = {(issue.code, issue.field) for issue in error.value.issues}
+    assert ("sender-profile-unknown", "sender") in issues
+    assert ("field-invalid", "layout.form") in issues
+    assert ("field-missing", "recipient") in issues
+    assert ("field-missing", "closing") not in issues
+
+
+def test_malformed_config_has_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("dinbrief.config.load_config", lambda: {"defaults": [42]})
+    with pytest.raises(LetterParseError, match="`defaults` must be a TOML table") as error:
+        parse_text("---\nformat: dinbrief/v2\n---\n# Subject\n")
+    assert error.value.code == "config-error"

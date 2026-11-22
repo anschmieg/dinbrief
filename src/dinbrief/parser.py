@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,7 +10,7 @@ import frontmatter
 from markdown_it import MarkdownIt
 from pydantic import ValidationError
 
-from .config import effective_metadata
+from .config import ConfigError, UnknownSenderProfileError, effective_metadata
 from .model import Letter, ParsedLetter
 
 
@@ -20,6 +21,7 @@ class ParseIssue:
     field: str | None = None
     line: int | None = None
     column: int | None = None
+    path: tuple[str, ...] = ()
 
 
 class LetterParseError(ValueError):
@@ -77,8 +79,14 @@ def _validation_error(exc: ValidationError) -> LetterParseError:
     issues: list[ParseIssue] = []
     errors = sorted(exc.errors(), key=lambda error: error["type"] != "extra_forbidden")
     for error in errors:
-        field = ".".join(str(part) for part in error["loc"])
+        location = error["loc"]
         kind = error["type"]
+        if location == ("sender", "str"):
+            continue  # Named sender profiles have already been resolved before validation.
+        if location[:2] == ("sender", "Party"):
+            location = ("sender", *location[2:])
+        path = tuple(str(part) for part in location)
+        field = ".".join(path)
         if kind == "missing":
             message = f"Required field `{field}` is missing."
             code = "field-missing"
@@ -88,7 +96,7 @@ def _validation_error(exc: ValidationError) -> LetterParseError:
         else:
             message = f"Invalid value for `{field}`: {error['msg']}."
             code = "field-invalid"
-        issues.append(ParseIssue(code, message, field))
+        issues.append(ParseIssue(code, message, field, path=path))
     first = issues[0]
     return LetterParseError(first.message, code=first.code, field=first.field, issues=issues)
 
@@ -121,16 +129,23 @@ def parse_text(text: str, source: str = "<memory>") -> ParsedLetter:
     except LetterParseError as exc:
         issues.extend(exc.issues)
         subject, body = "Missing subject", post.content.strip()
+    merged = None
+    metadata = None
     try:
         merged = effective_metadata(raw)
-        merged["subject"] = subject
-        metadata = Letter.model_validate(merged)
-    except ValidationError as exc:
-        issues.extend(_validation_error(exc).issues)
-        metadata = None
+    except UnknownSenderProfileError as exc:
+        issues.append(ParseIssue("sender-profile-unknown", str(exc), "sender"))
+        merged = exc.metadata
+    except (ConfigError, OSError, tomllib.TOMLDecodeError) as exc:
+        issues.append(ParseIssue("config-error", f"Cannot read dinbrief configuration: {exc}"))
     except ValueError as exc:
         issues.append(ParseIssue("field-invalid", str(exc)))
-        metadata = None
+    if merged is not None:
+        merged["subject"] = subject
+        try:
+            metadata = Letter.model_validate(merged)
+        except ValidationError as exc:
+            issues.extend(_validation_error(exc).issues)
     if issues:
         first = issues[0]
         raise LetterParseError(
