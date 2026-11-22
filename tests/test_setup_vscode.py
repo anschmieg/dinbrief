@@ -56,7 +56,7 @@ def test_setup_vscode_never_overwrites_invalid_existing_json(tmp_path: Path) -> 
     result = runner.invoke(cli.app, ["setup", "vscode", str(tmp_path)])
 
     assert result.exit_code == 2
-    assert "left unchanged" in result.output
+    assert "Cannot safely update" in result.output
     assert tasks.read_text(encoding="utf-8") == original
 
 

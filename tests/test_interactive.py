@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import Any
 
 import questionary
+from prompt_toolkit.application import create_app_session
+from prompt_toolkit.input import DummyInput
+from prompt_toolkit.output import DummyOutput
 from questionary.question import Question
 
 from dinbrief import cli
@@ -22,13 +25,15 @@ def test_letter_path_uses_questionary_supported_arguments(monkeypatch: Any) -> N
     """Construct the real path prompt so unsupported kwargs fail this test."""
     monkeypatch.setattr(Question, "ask", lambda self: None)
 
-    assert ui.ask_letter_path() is None
+    with create_app_session(input=DummyInput(), output=DummyOutput()):
+        assert ui.ask_letter_path() is None
 
 
 def test_letter_path_expands_home_before_validation(tmp_path: Path, monkeypatch: Any) -> None:
     letter = tmp_path / "letter.letter.md"
     letter.write_text("---\n---\n", encoding="utf-8")
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
 
     class _PathPrompt:
         def ask(self) -> str:
