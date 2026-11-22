@@ -127,8 +127,8 @@ def render(
 def _open_file(path: Path) -> None:
     if sys.platform == "darwin":
         subprocess.run(["open", str(path)], check=True)
-    elif os.name == "nt":
-        os.startfile(path)  # type: ignore[attr-defined]
+    elif sys.platform == "win32":
+        os.startfile(path)
     else:
         subprocess.run(["xdg-open", str(path)], check=True)
 
