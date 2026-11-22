@@ -5,6 +5,7 @@ from dinbrief.parser import parse_file
 from dinbrief.render import (
     _date_string,
     _party_lines,
+    _phone_uri,
     build_typst_source,
     render_pdf,
     render_preview,
@@ -19,6 +20,31 @@ def test_render_pdf(tmp_path: Path) -> None:
     diagnostics = render_pdf(parsed, output)
     assert output.read_bytes().startswith(b"%PDF")
     assert not [item for item in diagnostics if item.severity == "error"]
+
+
+def test_sender_contacts_render_as_clickable_mailto_and_tel_links(tmp_path: Path) -> None:
+    parsed = parse_file(ROOT / "examples" / "de" / "example.letter.md")
+    sender = parsed.metadata.sender
+    assert isinstance(sender, Party)
+    updated_sender = sender.model_copy(
+        update={"email": "julia.mueller+brief@example.de", "phone": "+49 (0) 30 / 123-45 67 ext. 89"}
+    )
+    parsed = parsed.model_copy(update={"metadata": parsed.metadata.model_copy(update={"sender": updated_sender})})
+    source = build_typst_source(parsed)
+    assert '#link("mailto:julia.mueller+brief@example.de")' in source
+    assert '#link("tel:+49301234567;ext=89")' in source
+    assert "+49 (0) 30 / 123-45 67 ext. 89" in source
+
+    output = tmp_path / "letter-with-contacts.pdf"
+    render_pdf(parsed, output)
+    assert output.read_bytes().startswith(b"%PDF")
+
+
+def test_phone_uri_normalizes_common_international_prefixes_and_extensions() -> None:
+    assert _phone_uri("0049 (0)30 123-45 67") == "tel:+49301234567"
+    assert _phone_uri("+1 (212) 555 0100 x42") == "tel:+12125550100;ext=42"
+    assert _phone_uri("(030) 123 45 67") == "tel:0301234567"
+    assert _phone_uri("---") is None
 
 
 def test_render_preview(tmp_path: Path) -> None:

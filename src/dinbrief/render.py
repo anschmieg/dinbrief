@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import quote
 
 import typst
 
@@ -90,6 +92,36 @@ def _reference_markup(references: dict[str, str]) -> str:
     return "\n".join(parts)
 
 
+def _typst_link(uri: str, label: str) -> str:
+    escaped_uri = uri.replace("\\", "\\\\").replace('"', '\\"')
+    return f'#link("{escaped_uri}")[{escape_typst(label)}]'
+
+
+def _phone_uri(phone: str) -> str | None:
+    """Build a tel URI from a human-formatted number, preserving any extension."""
+    value = phone.strip()
+    extension_match = re.search(r"(?:;ext=|\bext\.?\s*|\bx\s*|#)\s*(\d+)\s*$", value, re.I)
+    extension = extension_match.group(1) if extension_match else None
+    if extension_match:
+        value = value[: extension_match.start()]
+
+    # Parenthesized trunk zero is commonly shown for international dialing,
+    # e.g. +49 (0)30. It is not dialed after the country code.
+    if value.lstrip().startswith(("+", "00")):
+        value = re.sub(r"\(0\)", "", value)
+    digits = "".join(char for char in value if char.isascii() and char.isdigit())
+    if not digits:
+        return None
+    international = value.lstrip().startswith("+") or digits.startswith("00")
+    if digits.startswith("00") and not value.lstrip().startswith("+"):
+        digits = digits[2:]
+    number = f"+{digits}" if international else digits
+    uri = f"tel:{number}"
+    if extension:
+        uri += f";ext={extension}"
+    return uri
+
+
 def build_typst_source(letter: ParsedLetter) -> str:
     meta = letter.metadata
     assert isinstance(meta.sender, Party)
@@ -108,6 +140,21 @@ def build_typst_source(letter: ParsedLetter) -> str:
         for line in _party_lines(meta.sender, sender_country)
         if line != meta.sender.display_name
     )
+    contact_lines: list[str] = []
+    if meta.sender.email:
+        email_uri = quote(meta.sender.email, safe="@.+-_")
+        contact_lines.append(
+            f'#text(size: 8pt)[{_typst_link(f"mailto:{email_uri}", meta.sender.email)}]'
+        )
+    if meta.sender.phone:
+        phone_uri = _phone_uri(meta.sender.phone)
+        if phone_uri:
+            contact_lines.append(
+                f'#text(size: 8pt)[{_typst_link(phone_uri, meta.sender.phone)}]'
+            )
+    sender_contact_lines = " \\\n".join(contact_lines)
+    if sender_contact_lines:
+        sender_lines += "\n#v(2mm)\n" + sender_contact_lines
     references = _reference_markup(meta.references)
     attachments_label = "Anlagen" if meta.language.startswith("de") else "Attachments"
     attachments = ""
